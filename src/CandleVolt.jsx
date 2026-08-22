@@ -250,28 +250,70 @@ function loadRazorpayScript() {
 
 function PaymentModal({ plan, sessionId, onClose, onActivated }) {
   const [tab, setTab] = useState("crypto");
-  const [network, setNetwork] = useState("USDT-TRC20");
   const [copied, setCopied] = useState(false);
   const [rzpLoading, setRzpLoading] = useState(false);
   const [rzpError, setRzpError] = useState("");
 
-  const rateINRtoUSDT = 87; // mock reference rate, for crypto tab display only
-  const priceINR = parseInt(plan.price.replace(/[₹,]/g, ""), 10) || 0;
-  const usdtAmount = (priceINR / rateINRtoUSDT).toFixed(2);
+  // Real crypto order state — created on the backend so the exact amount
+  // is unique to this order and can be auto-matched on-chain.
+  const [cryptoOrder, setCryptoOrder] = useState(null);
+  const [cryptoError, setCryptoError] = useState("");
+  const [cryptoStatus, setCryptoStatus] = useState("pending"); // pending | paid | expired
 
-  const wallets = {
-    "USDT-TRC20": "TDemo9xQvR3kLpZ8yFhN2mWc7sGtAeK1JD",
-    "USDT-BEP20": "0xDemo7fA31bE9c2D48aF60eB1234FfC9012",
-    BTC: "bc1qdemo7xtn2vklq8s9jpyzr4wamg3f0chxyz",
-  };
+  useEffect(() => {
+    if (tab !== "crypto" || cryptoOrder) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/subscribe/create-crypto-order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: sessionId, planName: plan.name }),
+        });
+        if (!res.ok) throw new Error("bad response");
+        const data = await res.json();
+        if (!cancelled) setCryptoOrder(data);
+      } catch {
+        if (!cancelled)
+          setCryptoError("Couldn't reach the backend to create a payment order.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, cryptoOrder, sessionId, plan.name]);
 
-  const payload = network === "BTC" ? `bitcoin:${wallets[network]}` : wallets[network];
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&color=237-166-75&bgcolor=13-16-23&data=${encodeURIComponent(
-    payload
-  )}`;
+  // Poll for automatic on-chain confirmation — no admin action needed.
+  useEffect(() => {
+    if (!cryptoOrder || cryptoStatus !== "pending") return;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${BACKEND_URL}/api/subscribe/crypto-status?orderId=${cryptoOrder.orderId}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "paid") {
+          setCryptoStatus("paid");
+          onActivated(plan.name);
+        } else if (data.status === "expired") {
+          setCryptoStatus("expired");
+        }
+      } catch {
+        // ignore transient poll failures
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [cryptoOrder, cryptoStatus, onActivated, plan.name]);
 
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(wallets[network]).catch(() => {});
+  const qrUrl = cryptoOrder
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&color=237-166-75&bgcolor=13-16-23&data=${encodeURIComponent(
+        cryptoOrder.walletAddress
+      )}`
+    : null;
+
+  const handleCopy = (text) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -346,7 +388,6 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
             <X size={16} />
           </button>
         </div>
-
         <div className="pay-tabs">
           <button
             className={`pay-tab ${tab === "crypto" ? "pay-tab-active" : ""}`}
@@ -366,43 +407,81 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
           <span>{plan.name} plan</span>
           <span className="modal-amount">
             {plan.price}
-            {tab === "crypto" && (
-              <span className="modal-amount-usdt"> ≈ {usdtAmount} USDT</span>
+            {tab === "crypto" && cryptoOrder && (
+              <span className="modal-amount-usdt"> ≈ {cryptoOrder.amount} USDT</span>
             )}
           </span>
         </div>
 
         {tab === "crypto" ? (
           <>
-            <div className="network-chips">
-              {Object.keys(wallets).map((n) => (
-                <button
-                  key={n}
-                  className={`chip ${network === n ? "chip-active" : ""}`}
-                  onClick={() => setNetwork(n)}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            <div className="qr-box">
-              <img src={qrUrl} alt="Payment QR code" width={190} height={190} />
-            </div>
-            <div className="wallet-row">
-              <span className="wallet-addr">{wallets[network]}</span>
-              <button className="copy-btn" onClick={handleCopy}>
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <div className="modal-note">
-              Scan with any {network.startsWith("USDT") ? "USDT" : "BTC"}-compatible
-              wallet and send the exact amount shown.
-            </div>
-            <div className="modal-demo-tag">
-              <ShieldCheck size={12} /> Demo wallet — swap in your real receiving
-              address before going live.
-            </div>
+            {cryptoError && <div className="rzp-error">{cryptoError}</div>}
+
+            {!cryptoOrder && !cryptoError && (
+              <div className="rzp-box">
+                <p>Setting up your payment order…</p>
+              </div>
+            )}
+
+            {cryptoOrder && cryptoStatus === "pending" && (
+              <>
+                <div className="exact-amount-box">
+                  <div className="exact-amount-label">Send exactly</div>
+                  <div className="exact-amount-value">
+                    {cryptoOrder.amount} USDT
+                    <button
+                      className="copy-btn-inline"
+                      onClick={() => handleCopy(String(cryptoOrder.amount))}
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                  <div className="exact-amount-warn">
+                    The exact decimal amount matters — it's how we identify your
+                    payment. Sending a rounded amount will delay activation.
+                  </div>
+                </div>
+
+                <div className="qr-box">
+                  <img src={qrUrl} alt="Payment QR code" width={190} height={190} />
+                </div>
+
+                <div className="wallet-row">
+                  <span className="wallet-addr">{cryptoOrder.walletAddress}</span>
+                  <button
+                    className="copy-btn"
+                    onClick={() => handleCopy(cryptoOrder.walletAddress)}
+                  >
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+
+                <div className="waiting-row">
+                  <span className="pulse-dot" />
+                  Waiting for payment — this page updates automatically, no need
+                  to refresh.
+                </div>
+
+                <div className="modal-note">
+                  Network: <strong>USDT-TRC20</strong> only. Sending on any other
+                  network will not be detected.
+                </div>
+              </>
+            )}
+
+            {cryptoStatus === "paid" && (
+              <div className="rzp-box">
+                <Check size={22} style={{ color: "#E3A64B", marginBottom: 8 }} />
+                <p>Payment received — your plan is now active.</p>
+              </div>
+            )}
+
+            {cryptoStatus === "expired" && (
+              <div className="rzp-box">
+                <p>This payment window expired. Close and reopen to get a fresh amount.</p>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -677,7 +756,6 @@ export default function CandleVolt() {
         @media (max-width: 820px) {
           .layout { grid-template-columns: 1fr; }
         }
-
         .panel {
           background: #12161F;
           border: 1px solid #1B2130;
@@ -848,6 +926,13 @@ export default function CandleVolt() {
         }
         .rzp-btn:disabled { opacity: 0.6; cursor: default; }
         .rzp-error { margin-top: 10px; color: #E2555A; font-size: 11.5px; }
+        .exact-amount-box { background: #171307; border: 1px solid #3A2E1C; border-radius: 10px; padding: 12px; margin-bottom: 12px; text-align: center; }
+        .exact-amount-label { font-size: 10.5px; color: #9AA3B5; margin-bottom: 4px; }
+        .exact-amount-value { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #E3A64B; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .copy-btn-inline { background: none; border: none; color: #E3A64B; cursor: pointer; padding: 2px; }
+        .exact-amount-warn { font-size: 10.5px; color: #9AA3B5; margin-top: 6px; line-height: 1.5; }
+        .waiting-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #9AA3B5; margin-bottom: 10px; }
+        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A64B; animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0; }
       `}</style>
 
       <Ticker tickerData={tickerData} />
@@ -1067,4 +1152,4 @@ export default function CandleVolt() {
       )}
     </div>
   );
-}
+              }
