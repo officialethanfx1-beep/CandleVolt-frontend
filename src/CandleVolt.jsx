@@ -676,3 +676,662 @@ export default function CandleVolt() {
       });
     return all;
   });
+const [signals, setSignals] = useState([]);
+  const [selected, setSelected] = useState(ASSETS.crypto[0].symbol);
+  const [plan, setPlan] = useState("Free");
+  const [payingPlan, setPayingPlan] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [connected, setConnected] = useState(true);
+  const sessionIdRef = useRef(makeSessionId());
+
+  const allAssets = Object.values(ASSETS).flat();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Poll the real backend for prices — falls back to holding the last known
+  // value (and flags "offline") if the backend isn't reachable yet.
+  const pollPrices = useCallback(async () => {
+    try {
+      const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      if (!data || typeof data !== "object") throw new Error("bad payload");
+      setConnected(true);
+      setSeries((prev) => {
+        const next = { ...prev };
+        Object.values(data).forEach((list) => {
+          if (!Array.isArray(list)) return;
+          list.forEach((entry) => {
+            const symbol = entry?.symbol;
+            const price = entry?.price;
+            if (!symbol || price == null || Number.isNaN(price)) return;
+            const arr = [...(next[symbol] || seedSeries(price))];
+            arr.push(price);
+            if (arr.length > HISTORY_LEN) arr.shift();
+            next[symbol] = arr;
+          });
+        });
+        return next;
+      });
+    } catch (e) {
+      console.warn("[CandleVolt] price poll failed:", e?.message);
+      setConnected(false);
+    }
+  }, []);
+
+  // Poll real signals for the active market — free-plan delay is enforced
+  // server-side, so whatever we get back here is already correctly gated.
+  const pollSignals = useCallback(async () => {
+    try {
+      const res = await fetchWithTimeout(
+        `${BACKEND_URL}/api/signals?market=${market}&userId=${sessionIdRef.current}`
+      );
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      setSignals(Array.isArray(data?.signals) ? data.signals : []);
+    } catch (e) {
+      console.warn("[CandleVolt] signal poll failed:", e?.message);
+      // keep whatever signals we already have rather than clearing them
+    }
+  }, [market]);
+
+  useEffect(() => {
+    pollPrices();
+    pollSignals();
+    const priceId = setInterval(pollPrices, POLL_MS);
+    const sigId = setInterval(pollSignals, POLL_MS);
+    return () => {
+      clearInterval(priceId);
+      clearInterval(sigId);
+    };
+  }, [pollPrices, pollSignals]);
+
+  const tickerData = allAssets.map((a) => {
+    const arr = series[a.symbol];
+    const price = arr[arr.length - 1];
+    const prev = arr[Math.max(0, arr.length - 6)];
+    const pct = prev ? ((price - prev) / prev) * 100 : 0;
+    return { symbol: a.symbol, price, up: price >= prev, pct };
+  });
+
+  const visibleAssets = ASSETS[market];
+  const isFree = plan === "Free";
+
+  const plans = [
+    {
+      name: "Free",
+      price: "₹0",
+      period: "/mo",
+      features: ["3 signals / day", "2–3 min delayed", "Crypto only"],
+    },
+    {
+      name: "Pro",
+      price: "₹999",
+      period: "/mo",
+      features: [
+        "Unlimited signals",
+        "Real-time delivery",
+        "Crypto + Forex + Commodities",
+        "Entry / Target / Stop",
+      ],
+      highlight: true,
+    },
+    {
+      name: "Elite",
+      price: "₹2,499",
+      period: "/mo",
+      features: [
+        "Everything in Pro",
+        "Memecoin signals",
+        "Confidence scoring",
+        "Priority signal queue",
+      ],
+    },
+  ];
+
+  return (
+    <div className="app-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+        * { box-sizing: border-box; }
+        .app-root {
+          background: #0A0D12;
+          min-height: 100vh;
+          color: #EDEFF3;
+          font-family: 'Inter', sans-serif;
+          padding-bottom: 48px;
+        }
+        .ticker-wrap {
+          overflow: hidden;
+          border-bottom: 1px solid #232A3B;
+          background: #0D1017;
+          white-space: nowrap;
+        }
+        .ticker-track {
+          display: inline-flex;
+          animation: scroll 34s linear infinite;
+          padding: 8px 0;
+        }
+        @keyframes scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+        .ticker-item {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+          padding: 0 22px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12px;
+          border-right: 1px solid #1B2130;
+        }
+        .ticker-sym { color: #9AA3B5; }
+        .ticker-up { color: #E3A64B; }
+        .ticker-down { color: #E2555A; }
+
+        .header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 22px 28px 18px;
+          max-width: 1100px;
+          margin: 0 auto;
+        }
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-family: 'Space Grotesk', sans-serif;
+          font-weight: 700;
+          font-size: 20px;
+          letter-spacing: -0.01em;
+        }
+        .brand-mark {
+          width: 30px; height: 30px;
+          border-radius: 7px;
+          background: linear-gradient(135deg, #E3A64B, #C97A2E);
+          display: flex; align-items: center; justify-content: center;
+          color: #0A0D12;
+        }
+        .live-pill {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+          color: #9AA3B5;
+          border: 1px solid #232A3B;
+          padding: 5px 10px;
+          border-radius: 20px;
+        }
+        .live-pill.offline { color: #E2555A; border-color: #3A1E20; }
+        .live-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #E3A64B;
+          animation: pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+
+        .offline-banner {
+          display: flex; align-items: center; gap: 8px;
+          background: #1A1210; border: 1px solid #3A2418; color: #E3A64B;
+          font-size: 12px; border-radius: 8px; padding: 9px 12px; margin-bottom: 16px;
+        }
+
+        .market-tabs {
+          display: flex; gap: 6px; margin: 18px 0 20px; flex-wrap: wrap;
+        }
+        .tab-btn {
+          font-family: 'Space Grotesk', sans-serif;
+          font-weight: 600; font-size: 13px;
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: 1px solid #232A3B;
+          background: #12161F;
+          color: #9AA3B5;
+          cursor: pointer;
+          transition: all .15s ease;
+        }
+        .tab-btn.active {
+          background: #1A2030;
+          color: #E3A64B;
+          border-color: #3A2E1C;
+        }
+
+        .layout {
+          display: grid;
+          grid-template-columns: 1.1fr 1.6fr;
+          gap: 20px;
+        }
+        @media (max-width: 820px) {
+          .layout { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+          background: #12161F;
+          border: 1px solid #1B2130;
+          border-radius: 12px;
+          padding: 16px;
+        }
+        .panel-title {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 13px; font-weight: 600;
+          color: #9AA3B5;
+          text-transform: uppercase; letter-spacing: 0.06em;
+          margin-bottom: 12px;
+        }
+
+        .asset-row {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 8px;
+          border-radius: 8px;
+          cursor: pointer;
+          border: 1px solid transparent;
+        }
+        .asset-row:hover { background: #171D2A; }
+        .asset-row.selected { border-color: #232A3B; background: #171D2A; }
+        .asset-info { display: flex; flex-direction: column; gap: 2px; }
+        .asset-sym { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; }
+        .asset-price { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #9AA3B5; }
+        .asset-chart { width: 90px; }
+
+        .chart-hero {
+          margin-top: 14px;
+          padding: 14px;
+          background: #0D1017;
+          border-radius: 10px;
+          border: 1px solid #1B2130;
+        }
+        .chart-hero-head {
+          display: flex; justify-content: space-between; align-items: baseline;
+          margin-bottom: 6px;
+        }
+        .chart-hero-sym {
+          font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px;
+        }
+        .chart-hero-price {
+          font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #E3A64B;
+        }
+        .candle-chart-box { width: 100%; border-radius: 6px; overflow: hidden; }
+        .chart-note { font-size: 10.5px; color: #5C6478; margin-top: 8px; line-height: 1.5; }
+
+        .sig-feed { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; }
+        .sig-card {
+          border-radius: 10px;
+          padding: 13px 14px;
+          border: 1px solid #1B2130;
+          background: #0D1017;
+          border-left: 3px solid #E3A64B;
+          position: relative;
+        }
+        .sig-sell { border-left-color: #E2555A; }
+        .sig-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .sig-dir { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12px; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; }
+        .sig-sell .sig-dir { color: #E2555A; }
+        .sig-market { font-size: 10px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; }
+        .sig-symbol { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+        .sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+        .sig-label { font-size: 10px; color: #5C6478; margin-bottom: 2px; }
+        .sig-val { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; }
+        .sig-val-up { color: #E3A64B; }
+        .sig-val-down { color: #E2555A; }
+        .sig-conf-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .sig-conf-track { flex: 1; height: 4px; background: #1B2130; border-radius: 4px; overflow: hidden; }
+        .sig-conf-fill { height: 100%; border-radius: 4px; }
+        .sig-conf-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9AA3B5; width: 32px; text-align: right; }
+        .sig-foot { display: flex; justify-content: space-between; font-size: 11px; color: #5C6478; }
+
+        .sig-locked { min-height: 96px; }
+        .blurred { filter: blur(5px); user-select: none; }
+        .lock-overlay {
+          position: absolute; inset: 0; top: 40px;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 4px; color: #E3A64B; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+          background: linear-gradient(180deg, rgba(13,16,23,0.4), rgba(13,16,23,0.92));
+        }
+        .lock-sub { color: #5C6478; font-size: 10.5px; font-family: 'Inter', sans-serif; }
+
+        .empty-state { padding: 30px 10px; text-align: center; color: #5C6478; font-size: 13px; line-height: 1.6; }
+
+        .news-feed { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+        .news-item {
+          display: block; padding: 10px 12px; border-radius: 8px;
+          background: #0D1017; border: 1px solid #1B2130;
+          text-decoration: none; color: inherit;
+        }
+        .news-item:hover { border-color: #232A3B; }
+        .news-title { font-size: 12.5px; color: #EDEFF3; line-height: 1.5; margin-bottom: 6px; }
+        .news-meta { display: flex; justify-content: space-between; font-size: 10.5px; }
+        .news-source { color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+        .news-time { color: #5C6478; font-family: 'IBM Plex Mono', monospace; }
+
+        .bottom-grid {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;
+        }
+        @media (max-width: 820px) { .bottom-grid { grid-template-columns: 1fr; } }
+        .stat-row { display: flex; justify-content: space-between; gap: 10px; }
+        .stat-box {
+          flex: 1; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; padding: 12px;
+        }
+        .stat-label { font-size: 10.5px; color: #5C6478; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+        .stat-val { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: #EDEFF3; }
+        .stat-val.gold { color: #E3A64B; }
+
+        .plans-row { display: flex; flex-direction: column; gap: 10px; }
+        .plan-card {
+          border: 1px solid #1B2130; border-radius: 10px; padding: 13px 14px;
+          background: #0D1017; cursor: pointer;
+        }
+        .plan-card.highlight { border-color: #3A2E1C; background: #14110A; }
+        .plan-card.active { outline: 1.5px solid #E3A64B; }
+        .plan-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .plan-name { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+        .plan-price { font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #E3A64B; }
+        .plan-price span { color: #5C6478; font-size: 11px; }
+        .plan-feats { font-size: 11.5px; color: #9AA3B5; line-height: 1.9; margin-bottom: 10px; }
+        .plan-pay-btn {
+          width: 100%; padding: 8px; border-radius: 7px; border: 1px solid #3A2E1C;
+          background: #1A2030; color: #E3A64B; font-family: 'Space Grotesk', sans-serif;
+          font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center;
+          justify-content: center; gap: 6px;
+        }
+        .plan-pay-btn:hover { background: #212940; }
+        .plan-pay-btn:disabled { opacity: 0.35; cursor: default; }
+
+        .disclaimer {
+          margin-top: 24px; padding: 12px 14px; border-radius: 10px;
+          background: #14110A; border: 1px solid #2A2013;
+          font-size: 11.5px; color: #9AA3B5; display: flex; gap: 8px;
+        }
+        .disclaimer svg { flex-shrink: 0; margin-top: 1px; color: #E3A64B; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #232A3B; border-radius: 4px; }
+
+        .modal-backdrop {
+          position: fixed; inset: 0; background: rgba(4,5,8,0.72);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 50; padding: 16px;
+        }
+        .modal-card {
+          background: #12161F; border: 1px solid #232A3B; border-radius: 14px;
+          padding: 18px; width: 100%; max-width: 340px;
+        }
+        .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .modal-title { display: flex; align-items: center; gap: 7px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; color: #E3A64B; }
+        .modal-close { background: none; border: none; color: #5C6478; cursor: pointer; padding: 4px; }
+        .modal-plan-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; font-size: 13px; color: #9AA3B5; }
+        .modal-amount { font-family: 'IBM Plex Mono', monospace; color: #EDEFF3; font-size: 14px; }
+        .modal-amount-usdt { color: #E3A64B; font-size: 11.5px; }
+        .pay-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+        .pay-tab {
+          flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+          font-size: 12px; font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+          padding: 8px; border-radius: 7px; border: 1px solid #232A3B; background: #0D1017;
+          color: #9AA3B5; cursor: pointer;
+        }
+        .pay-tab-active { color: #E3A64B; border-color: #3A2E1C; background: #171307; }
+        .network-chips { display: flex; gap: 6px; margin-bottom: 14px; }
+        .chip { flex: 1; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; padding: 6px 4px; border-radius: 6px; border: 1px solid #232A3B; background: #0D1017; color: #9AA3B5; cursor: pointer; }
+        .chip-active { border-color: #3A2E1C; color: #E3A64B; background: #171307; }
+        .qr-box { display: flex; justify-content: center; padding: 12px; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; margin-bottom: 12px; }
+        .qr-box img { border-radius: 6px; }
+        .wallet-row { display: flex; align-items: center; gap: 8px; background: #0D1017; border: 1px solid #1B2130; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+        .wallet-addr { flex: 1; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #9AA3B5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .copy-btn { display: flex; align-items: center; gap: 4px; font-size: 11px; background: #1A2030; border: 1px solid #232A3B; color: #E3A64B; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+        .modal-note { font-size: 11px; color: #9AA3B5; line-height: 1.6; margin-bottom: 10px; }
+        .modal-demo-tag { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #5C6478; }
+        .rzp-box { text-align: center; padding: 18px 10px; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; margin-bottom: 12px; }
+        .rzp-box p { font-size: 12px; color: #9AA3B5; line-height: 1.6; margin: 0 0 14px; }
+        .rzp-btn {
+          width: 100%; padding: 10px; border-radius: 8px; border: none;
+          background: linear-gradient(135deg, #E3A64B, #C97A2E); color: #0A0D12;
+          font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px; cursor: pointer;
+        }
+        .rzp-btn:disabled { opacity: 0.6; cursor: default; }
+        .rzp-error { margin-top: 10px; color: #E2555A; font-size: 11.5px; }
+        .exact-amount-box { background: #171307; border: 1px solid #3A2E1C; border-radius: 10px; padding: 12px; margin-bottom: 12px; text-align: center; }
+        .exact-amount-label { font-size: 10.5px; color: #9AA3B5; margin-bottom: 4px; }
+        .exact-amount-value { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #E3A64B; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .copy-btn-inline { background: none; border: none; color: #E3A64B; cursor: pointer; padding: 2px; }
+        .exact-amount-warn { font-size: 10.5px; color: #9AA3B5; margin-top: 6px; line-height: 1.5; }
+        .waiting-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #9AA3B5; margin-bottom: 10px; }
+        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A64B; animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0; }
+      `}</style>
+
+      <Ticker tickerData={tickerData} />
+
+      <div className="header">
+        <div className="brand">
+          <div className="brand-mark">
+            <Zap size={16} strokeWidth={2.6} />
+          </div>
+          CandleVolt
+        </div>
+        <div className={`live-pill ${connected ? "" : "offline"}`}>
+          {connected ? (
+            <>
+              <span className="live-dot" />
+              LIVE · REAL FEED
+            </>
+          ) : (
+            <>
+              <WifiOff size={11} />
+              BACKEND OFFLINE
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="container">
+        {!connected && (
+          <div className="offline-banner">
+            <WifiOff size={14} />
+            Can't reach the CandleVolt backend at {BACKEND_URL}. Start it with
+            <code style={{ margin: "0 4px" }}>npm start</code> in candlevolt-backend/,
+            or update BACKEND_URL in this file to your deployed URL.
+          </div>
+        )}
+
+        <div className="market-tabs">
+          {Object.keys(ASSETS).map((key) => (
+            <button
+              key={key}
+              className={`tab-btn ${market === key ? "active" : ""}`}
+              onClick={() => {
+                setMarket(key);
+                setSelected(ASSETS[key][0].symbol);
+              }}
+            >
+              {MARKET_LABELS[key]}
+            </button>
+          ))}
+        </div>
+
+        <div className="layout">
+          {/* LEFT: asset watchlist + hero chart */}
+          <div className="panel">
+            <div className="panel-title">Watchlist</div>
+            {visibleAssets.map((a) => {
+              const arr = series[a.symbol];
+              const price = arr[arr.length - 1];
+              const prev = arr[0];
+              const up = price >= prev;
+              return (
+                <div
+                  key={a.symbol}
+                  className={`asset-row ${selected === a.symbol ? "selected" : ""}`}
+                  onClick={() => setSelected(a.symbol)}
+                >
+                  <div className="asset-info">
+                    <span className="asset-sym">{a.symbol}</span>
+                    <span className="asset-price">{fmtPrice(price, a.symbol)}</span>
+                  </div>
+                  <div className="asset-chart">
+                    <Sparkline data={arr} positive={up} />
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="chart-hero">
+              <div className="chart-hero-head">
+                <span className="chart-hero-sym">{selected}</span>
+                <span className="chart-hero-price">
+                  {fmtPrice(
+                    (series[selected] || [])[((series[selected] || []).length || 1) - 1],
+                    selected
+                  )}
+                </span>
+              </div>
+              {market === "crypto" || market === "meme" ? (
+                <CandlestickChart symbol={selected} />
+              ) : (
+                <ResponsiveContainer width="100%" height={140}>
+                  <LineChart data={(series[selected] || []).map((v, i) => ({ i, v }))}>
+                    <YAxis domain={["dataMin", "dataMax"]} hide />
+                    <Line
+                      type="monotone"
+                      dataKey="v"
+                      stroke="#E3A64B"
+                      strokeWidth={1.8}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+              {market !== "crypto" && market !== "meme" && (
+                <div className="chart-note">
+                  Line chart — full candlesticks need a paid forex/commodities
+                  data plan (free tier only gives the latest price, not OHLC).
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT: signal feed */}
+          <div className="panel">
+            <div className="panel-title">
+              <Radio size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+              Signal Feed — {MARKET_LABELS[market]}
+              {isFree && (
+                <span style={{ color: "#5C6478", fontWeight: 400, textTransform: "none", marginLeft: 8 }}>
+                  (Free plan — delayed 2–3 min)
+                </span>
+              )}
+            </div>
+            <div className="sig-feed">
+              {signals.length === 0 && (
+                <div className="empty-state">
+                  {connected
+                    ? `Scanning ${visibleAssets.map((a) => a.symbol).join(", ")} for real crossovers — signals appear here the moment one fires.`
+                    : "Waiting for the backend to connect before showing real signals."}
+                </div>
+              )}
+              {signals.map((sig) => (
+                <SignalCard key={sig.id} sig={sig} locked={false} remainingMs={0} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <NewsPanel market={market} />
+
+        <div className="bottom-grid">
+          <div className="panel">
+            <div className="panel-title">
+              <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+              Your Earnings
+            </div>
+            <div className="stat-row">
+              <div className="stat-box">
+                <div className="stat-label"><Users size={11} /> Subscribers</div>
+                <div className="stat-val">312</div>
+              </div>
+              <div className="stat-box">
+                <div className="stat-label"><Wallet size={11} /> This Month</div>
+                <div className="stat-val gold">₹1,86,400</div>
+              </div>
+              <div className="stat-box">
+                <div className="stat-label"><Crown size={11} /> Elite Users</div>
+                <div className="stat-val">44</div>
+              </div>
+            </div>
+            <div className="disclaimer">
+              <ShieldCheck size={16} />
+              <span>
+                Subscriber/earnings numbers above are still illustrative — wire them
+                to your real user table (see backend db.js) once you have paying
+                users. This app delivers signals only; users execute trades on their
+                own broker/exchange account.
+              </span>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-title">
+              <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+              Subscription Plans
+            </div>
+            <div className="plans-row">
+              {plans.map((p) => (
+                <div
+                  key={p.name}
+                  className={`plan-card ${p.highlight ? "highlight" : ""} ${
+                    plan === p.name ? "active" : ""
+                  }`}
+                >
+                  <div className="plan-head">
+                    <span className="plan-name">
+                      {p.name === "Elite" && <Crown size={13} />}
+                      {p.name}
+                    </span>
+                    <span className="plan-price">
+                      {p.price}
+                      <span>{p.period}</span>
+                    </span>
+                  </div>
+                  <div className="plan-feats">
+                    {p.features.map((f) => (
+                      <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
+                        {f}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    className="plan-pay-btn"
+                    disabled={p.name === "Free"}
+                    onClick={() => setPayingPlan(p)}
+                  >
+                    <QrCode size={13} />
+                    {p.name === "Free" ? "Current plan" : "Subscribe"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {payingPlan && (
+        <PaymentModal
+          plan={payingPlan}
+          sessionId={sessionIdRef.current}
+          onClose={() => setPayingPlan(null)}
+          onActivated={(planName) => {
+            setPlan(planName);
+            setPayingPlan(null);
+          }}
+        />
+      )}
+    </div>
+  );
+      }
