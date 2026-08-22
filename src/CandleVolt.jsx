@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { LineChart, Line, ResponsiveContainer, YAxis } from "recharts";
-import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
+import { createChart, ColorType } from "lightweight-charts";
 import {
   TrendingUp,
   TrendingDown,
@@ -164,7 +164,7 @@ function CandlestickChart({ symbol }) {
       crosshair: { mode: 0 },
     });
 
-    const series = chart.addSeries(CandlestickSeries, {
+    const series = chart.addCandlestickSeries({
       upColor: "#E3A64B",
       downColor: "#E2555A",
       borderVisible: false,
