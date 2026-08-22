@@ -34,7 +34,7 @@ import {
 
 // >>> Point this at your deployed backend (see candlevolt-backend/README.md).
 // Left as localhost so it's obvious this needs changing before going live.
-const BACKEND_URL = "https://candlevolt-backend-2.onrender.com";
+const BACKEND_URL = "https://candlevolt-backend-qsyr.onrender.com";
 
 const ASSETS = {
   crypto: [
