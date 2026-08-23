@@ -33,6 +33,8 @@ import {
 // text-lo:   #5C6478
 // ---------------------------------------------------------------------------
 
+// >>> Point this at your deployed backend (see candlevolt-backend/README.md).
+// Left as localhost so it's obvious this needs changing before going live.
 const BACKEND_URL = "https://candlevolt-backend-qsyr.onrender.com";
 
 const ASSETS = {
@@ -103,6 +105,44 @@ function fmtCountdown(ms) {
 // so it resets on reload. Swap for real auth once you add user accounts.
 function makeSessionId() {
   return `sess-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+}
+
+// Real localStorage is fine here — this is a real deployed website (Vercel),
+// not a claude.ai artifact sandbox, so normal browser storage APIs work.
+const LS_TOKEN = "candlevolt_token";
+const LS_USERID = "candlevolt_userid";
+const LS_EMAIL = "candlevolt_email";
+
+function loadStoredAuth() {
+  try {
+    const token = localStorage.getItem(LS_TOKEN);
+    const userId = localStorage.getItem(LS_USERID);
+    const email = localStorage.getItem(LS_EMAIL);
+    if (token && userId) return { token, userId, email };
+  } catch {
+    // storage may be unavailable (private mode etc.) — just skip persistence
+  }
+  return null;
+}
+
+function saveStoredAuth({ token, userId, email }) {
+  try {
+    localStorage.setItem(LS_TOKEN, token);
+    localStorage.setItem(LS_USERID, userId);
+    if (email) localStorage.setItem(LS_EMAIL, email);
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredAuth() {
+  try {
+    localStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_USERID);
+    localStorage.removeItem(LS_EMAIL);
+  } catch {
+    // ignore
+  }
 }
 
 // Manual timeout wrapper — avoids relying on AbortSignal.timeout(), which
@@ -336,7 +376,7 @@ function SignalCard({ sig, locked, remainingMs }) {
           <span>Unlocks in {fmtCountdown(remainingMs)}</span>
           <span className="lock-sub">Upgrade to Pro for real-time signals</span>
         </div>
-        </div>
+      </div>
     );
   }
 
@@ -387,6 +427,96 @@ function SignalCard({ sig, locked, remainingMs }) {
       <div className="sig-foot">
         <span>{sig.reason}</span>
         <span className="sig-time">{timeAgo(sig.ts)}</span>
+      </div>
+    </div>
+  );
+}
+
+function AuthModal({ onAuthenticated, onGuest }) {
+  const [mode, setMode] = useState("login"); // login | signup
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
+    if (!email || !password) {
+      setError("Enter your email and password.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/auth/${mode === "login" ? "login" : "signup"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong.");
+        return;
+      }
+      saveStoredAuth({ token: data.token, userId: data.userId, email: data.email });
+      onAuthenticated({ userId: data.userId, email: data.email, plan: data.plan });
+    } catch {
+      setError("Couldn't reach the server — try again in a moment.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <div className="modal-title" style={{ marginBottom: 16 }}>
+          <Zap size={16} /> {mode === "login" ? "Log in" : "Create your account"}
+        </div>
+
+        <input
+          className="auth-input"
+          type="email"
+          autoComplete="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="auth-input"
+          type="password"
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+
+        {error && <div className="rzp-error">{error}</div>}
+
+        <button className="rzp-btn" onClick={submit} disabled={loading}>
+          {loading ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
+        </button>
+
+        <div className="auth-switch">
+          {mode === "login" ? (
+            <>
+              Don't have an account?{" "}
+              <span onClick={() => setMode("signup")}>Sign up</span>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <span onClick={() => setMode("login")}>Log in</span>
+            </>
+          )}
+        </div>
+
+        <div className="auth-guest" onClick={onGuest}>
+          Continue as guest
+        </div>
       </div>
     </div>
   );
@@ -676,13 +806,62 @@ export default function CandleVolt() {
       });
     return all;
   });
-const [signals, setSignals] = useState([]);
+  const [signals, setSignals] = useState([]);
   const [selected, setSelected] = useState(ASSETS.crypto[0].symbol);
-  const [plan, setPlan] = useState("Free");
   const [payingPlan, setPayingPlan] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [connected, setConnected] = useState(true);
-  const sessionIdRef = useRef(makeSessionId());
+
+  // ---- Auth state ----
+  // auth is null until we've resolved it (either a real account or a guest
+  // session). authChecked flips true once that resolution attempt is done.
+  const [auth, setAuth] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const guestIdRef = useRef(null);
+
+  const effectiveUserId = auth?.userId || guestIdRef.current;
+
+  useEffect(() => {
+    (async () => {
+      const stored = loadStoredAuth();
+      if (!stored) {
+        setAuthChecked(true);
+        setShowAuthModal(true);
+        return;
+      }
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${stored.token}` },
+        });
+        if (!res.ok) throw new Error("session invalid");
+        const data = await res.json();
+        setAuth({ userId: data.userId, email: data.email, plan: data.plan, guest: false });
+      } catch {
+        clearStoredAuth();
+        setShowAuthModal(true);
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, []);
+
+  const handleAuthenticated = ({ userId, email, plan }) => {
+    setAuth({ userId, email, plan, guest: false });
+    setShowAuthModal(false);
+  };
+
+  const handleGuest = () => {
+    if (!guestIdRef.current) guestIdRef.current = makeSessionId();
+    setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true });
+    setShowAuthModal(false);
+  };
+
+  const handleLogout = () => {
+    clearStoredAuth();
+    setAuth(null);
+    setShowAuthModal(true);
+  };
 
   const allAssets = Object.values(ASSETS).flat();
 
@@ -725,9 +904,10 @@ const [signals, setSignals] = useState([]);
   // Poll real signals for the active market — free-plan delay is enforced
   // server-side, so whatever we get back here is already correctly gated.
   const pollSignals = useCallback(async () => {
+    if (!effectiveUserId) return;
     try {
       const res = await fetchWithTimeout(
-        `${BACKEND_URL}/api/signals?market=${market}&userId=${sessionIdRef.current}`
+        `${BACKEND_URL}/api/signals?market=${market}&userId=${effectiveUserId}`
       );
       if (!res.ok) throw new Error("bad response");
       const data = await res.json();
@@ -736,7 +916,7 @@ const [signals, setSignals] = useState([]);
       console.warn("[CandleVolt] signal poll failed:", e?.message);
       // keep whatever signals we already have rather than clearing them
     }
-  }, [market]);
+  }, [market, effectiveUserId]);
 
   useEffect(() => {
     pollPrices();
@@ -758,7 +938,8 @@ const [signals, setSignals] = useState([]);
   });
 
   const visibleAssets = ASSETS[market];
-  const isFree = plan === "Free";
+  const currentPlan = auth?.plan || "Free";
+  const isFree = currentPlan === "Free";
 
   const plans = [
     {
@@ -817,7 +998,7 @@ const [signals, setSignals] = useState([]);
           padding: 8px 0;
         }
         @keyframes scroll {
-          from { transform: translateX(0); }
+        from { transform: translateX(0); }
           to { transform: translateX(-50%); }
         }
         .ticker-item {
@@ -866,6 +1047,19 @@ const [signals, setSignals] = useState([]);
           border-radius: 20px;
         }
         .live-pill.offline { color: #E2555A; border-color: #3A1E20; }
+        .header-right { display: flex; align-items: center; gap: 10px; }
+        .auth-badge { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+        .auth-badge-label { color: #9AA3B5; font-family: 'IBM Plex Mono', monospace; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .auth-badge-btn { background: #1A2030; border: 1px solid #232A3B; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+        .auth-input {
+          width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 8px;
+          border: 1px solid #232A3B; background: #0D1017; color: #EDEFF3;
+          font-family: 'Inter', sans-serif; font-size: 13px;
+        }
+        .auth-input:focus { outline: none; border-color: #3A2E1C; }
+        .auth-switch { text-align: center; font-size: 12px; color: #9AA3B5; margin-top: 12px; }
+        .auth-switch span { color: #E3A64B; cursor: pointer; font-weight: 600; }
+        .auth-guest { text-align: center; font-size: 11.5px; color: #5C6478; margin-top: 14px; cursor: pointer; text-decoration: underline; }
         .live-dot {
           width: 6px; height: 6px; border-radius: 50%;
           background: #E3A64B;
@@ -1015,6 +1209,7 @@ const [signals, setSignals] = useState([]);
           display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;
         }
         @media (max-width: 820px) { .bottom-grid { grid-template-columns: 1fr; } }
+
         .stat-row { display: flex; justify-content: space-between; gap: 10px; }
         .stat-box {
           flex: 1; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; padding: 12px;
@@ -1114,17 +1309,38 @@ const [signals, setSignals] = useState([]);
           </div>
           CandleVolt
         </div>
-        <div className={`live-pill ${connected ? "" : "offline"}`}>
-          {connected ? (
-            <>
-              <span className="live-dot" />
-              LIVE · REAL FEED
-            </>
-          ) : (
-            <>
-              <WifiOff size={11} />
-              BACKEND OFFLINE
-            </>
+        <div className="header-right">
+          <div className={`live-pill ${connected ? "" : "offline"}`}>
+            {connected ? (
+              <>
+                <span className="live-dot" />
+                LIVE · REAL FEED
+              </>
+            ) : (
+              <>
+                <WifiOff size={11} />
+                BACKEND OFFLINE
+              </>
+            )}
+          </div>
+          {authChecked && auth && (
+            <div className="auth-badge">
+              {auth.guest ? (
+                <>
+                  <span className="auth-badge-label">Guest</span>
+                  <button className="auth-badge-btn" onClick={() => setShowAuthModal(true)}>
+                    Sign in
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="auth-badge-label">{auth.email}</span>
+                  <button className="auth-badge-btn" onClick={handleLogout}>
+                    Log out
+                  </button>
+                  </>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1285,7 +1501,7 @@ const [signals, setSignals] = useState([]);
                 <div
                   key={p.name}
                   className={`plan-card ${p.highlight ? "highlight" : ""} ${
-                    plan === p.name ? "active" : ""
+                    currentPlan === p.name ? "active" : ""
                   }`}
                 >
                   <div className="plan-head">
@@ -1324,13 +1540,17 @@ const [signals, setSignals] = useState([]);
       {payingPlan && (
         <PaymentModal
           plan={payingPlan}
-          sessionId={sessionIdRef.current}
+          sessionId={effectiveUserId}
           onClose={() => setPayingPlan(null)}
           onActivated={(planName) => {
-            setPlan(planName);
+            setAuth((prev) => (prev ? { ...prev, plan: planName } : prev));
             setPayingPlan(null);
           }}
         />
+      )}
+
+      {showAuthModal && (
+        <AuthModal onAuthenticated={handleAuthenticated} onGuest={handleGuest} />
       )}
     </div>
   );
