@@ -18,6 +18,12 @@ import {
   QrCode,
   CreditCard,
   WifiOff,
+  Menu,
+  LayoutDashboard,
+  Newspaper,
+  CalendarClock,
+  Sparkles,
+  UserCircle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -432,6 +438,263 @@ function SignalCard({ sig, locked, remainingMs }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Navigation: side menu + the standalone views it switches between
+// ---------------------------------------------------------------------------
+
+const NAV_ITEMS = [
+  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { key: "news", label: "News", icon: Newspaper },
+  { key: "calendar", label: "Market Calendar", icon: CalendarClock },
+  { key: "analysis", label: "Daily Analysis", icon: Sparkles },
+  { key: "account", label: "Account", icon: UserCircle },
+];
+
+function SideMenu({ open, activeView, onSelect, onClose }) {
+  return (
+    <>
+      <div
+        className={`menu-scrim ${open ? "menu-scrim-open" : ""}`}
+        onClick={onClose}
+      />
+      <div className={`side-menu ${open ? "side-menu-open" : ""}`}>
+        <div className="side-menu-head">
+          <div className="brand-mark">
+            <Zap size={16} strokeWidth={2.6} />
+          </div>
+          CandleVolt
+        </div>
+        <div className="side-menu-items">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                className={`side-menu-item ${activeView === item.key ? "active" : ""}`}
+                onClick={() => {
+                  onSelect(item.key);
+                  onClose();
+                }}
+              >
+                <Icon size={16} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Full-page news view — both categories side by side with a toggle, more
+// headlines than the compact dashboard teaser.
+function NewsView() {
+  const [category, setCategory] = useState("crypto");
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetchWithTimeout(
+          `${BACKEND_URL}/api/news?category=${category}&limit=30`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
+      } catch {
+        // keep whatever headlines we already have
+      }
+    };
+    poll();
+    const id = setInterval(poll, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [category]);
+
+  return (
+    <div className="panel">
+      <div className="market-tabs" style={{ marginBottom: 14 }}>
+        <button
+          className={`tab-btn ${category === "crypto" ? "active" : ""}`}
+          onClick={() => setCategory("crypto")}
+        >
+          Crypto
+        </button>
+        <button
+          className={`tab-btn ${category === "forex" ? "active" : ""}`}
+          onClick={() => setCategory("forex")}
+        >
+          Forex & Commodities
+        </button>
+      </div>
+      <div className="news-feed" style={{ maxHeight: "none" }}>
+        {items.length === 0 && (
+          <div className="empty-state">Fetching the latest headlines…</div>
+        )}
+        {items.map((n) => (
+          <a key={n.id} href={n.link} target="_blank" rel="noopener noreferrer" className="news-item">
+            <div className="news-title">{n.title}</div>
+            <div className="news-meta">
+              <span className="news-source">{n.source}</span>
+              <span className="news-time">{timeAgoShort(n.publishedAt)}</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Placeholder — the real economic calendar (CPI, PPI, NFP, FOMC etc. from a
+// free ForexFactory-style feed) is next on the roadmap, not faked here.
+function CalendarView() {
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        <CalendarClock size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Market Calendar
+      </div>
+      <div className="coming-soon">
+        <CalendarClock size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
+        <p>
+          Economic calendar — CPI, PPI, NFP, FOMC and other major releases —
+          is coming soon. It'll pull from a free public calendar feed, same
+          spirit as the news panel.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Placeholder — the real AI-generated daily market summary (built from the
+// live prices/news/signals already flowing through the backend) is next on
+// the roadmap. No fabricated "predictions" shown here in the meantime.
+function AnalysisView() {
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        <Sparkles size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Daily Analysis
+      </div>
+      <div className="coming-soon">
+        <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
+        <p>
+          A daily AI-generated market summary — built from real prices, news,
+          and signals — is coming soon. Any market outlook here will always
+          be a read on current conditions, never a guaranteed prediction.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AccountView({ auth, onLogout, onShowAuth, plans, currentPlan, onSubscribe }) {
+  return (
+    <>
+      <div className="panel">
+        <div className="panel-title">
+          <UserCircle size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Account
+        </div>
+        {auth?.guest ? (
+          <div className="account-guest-box">
+            <p>You're browsing as a guest — your plan won't be saved if you clear this device.</p>
+            <button className="rzp-btn" onClick={onShowAuth}>
+              Sign up or log in
+            </button>
+          </div>
+        ) : (
+          <div className="account-info-row">
+            <div>
+              <div className="account-email">{auth?.email}</div>
+              <div className="account-plan-label">Current plan: {currentPlan}</div>
+            </div>
+            <button className="auth-badge-btn" onClick={onLogout}>
+              Log out
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-title">
+          <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Subscription Plans
+        </div>
+        <div className="plans-row">
+          {plans.map((p) => (
+            <div
+              key={p.name}
+              className={`plan-card ${p.highlight ? "highlight" : ""} ${
+                currentPlan === p.name ? "active" : ""
+              }`}
+            >
+              <div className="plan-head">
+                <span className="plan-name">
+                  {p.name === "Elite" && <Crown size={13} />}
+                  {p.name}
+                </span>
+                <span className="plan-price">
+                  {p.price}
+                  <span>{p.period}</span>
+                </span>
+              </div>
+              <div className="plan-feats">
+                {p.features.map((f) => (
+                  <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <button
+                className="plan-pay-btn"
+                disabled={p.name === "Free"}
+                onClick={() => onSubscribe(p)}
+              >
+                <QrCode size={13} />
+                {p.name === "Free" ? "Current plan" : "Subscribe"}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-title">
+          <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Your Earnings
+        </div>
+        <div className="stat-row">
+          <div className="stat-box">
+            <div className="stat-label"><Users size={11} /> Subscribers</div>
+            <div className="stat-val">312</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label"><Wallet size={11} /> This Month</div>
+            <div className="stat-val gold">₹1,86,400</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label"><Crown size={11} /> Elite Users</div>
+            <div className="stat-val">44</div>
+          </div>
+        </div>
+        <div className="disclaimer">
+          <ShieldCheck size={16} />
+          <span>
+            Illustrative numbers — wire them to your real user table (see
+            backend db.js) once you have paying users.
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function AuthModal({ onAuthenticated, onGuest }) {
   const [mode, setMode] = useState("login"); // login | signup
   const [email, setEmail] = useState("");
@@ -797,6 +1060,8 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
 
 export default function CandleVolt() {
   const [market, setMarket] = useState("crypto");
+  const [view, setView] = useState("dashboard");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [series, setSeries] = useState(() => {
     const all = {};
     Object.values(ASSETS)
@@ -998,7 +1263,7 @@ export default function CandleVolt() {
           padding: 8px 0;
         }
         @keyframes scroll {
-        from { transform: translateX(0); }
+          from { transform: translateX(0); }
           to { transform: translateX(-50%); }
         }
         .ticker-item {
@@ -1048,6 +1313,43 @@ export default function CandleVolt() {
         }
         .live-pill.offline { color: #E2555A; border-color: #3A1E20; }
         .header-right { display: flex; align-items: center; gap: 10px; }
+        .menu-btn {
+          background: none; border: none; color: #9AA3B5; cursor: pointer;
+          padding: 4px; display: flex; align-items: center;
+        }
+        .menu-scrim {
+          position: fixed; inset: 0; background: rgba(4,5,8,0);
+          pointer-events: none; transition: background .2s ease; z-index: 60;
+        }
+        .menu-scrim-open { background: rgba(4,5,8,0.6); pointer-events: auto; }
+        .side-menu {
+          position: fixed; top: 0; left: 0; bottom: 0; width: 260px;
+          background: #12161F; border-right: 1px solid #232A3B;
+          transform: translateX(-100%); transition: transform .22s ease;
+          z-index: 61; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px;
+        }
+        .side-menu-open { transform: translateX(0); }
+        .side-menu-head {
+          display: flex; align-items: center; gap: 10px;
+          font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px;
+          padding: 4px 10px 18px;
+        }
+        .side-menu-items { display: flex; flex-direction: column; gap: 4px; }
+        .side-menu-item {
+          display: flex; align-items: center; gap: 12px;
+          padding: 11px 12px; border-radius: 8px; border: none; background: none;
+          color: #9AA3B5; font-family: 'Inter', sans-serif; font-size: 13.5px;
+          cursor: pointer; text-align: left;
+        }
+        .side-menu-item:hover { background: #171D2A; }
+        .side-menu-item.active { background: #1A2030; color: #E3A64B; font-weight: 600; }
+        .coming-soon { text-align: center; padding: 26px 14px; }
+        .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
+        .account-guest-box { text-align: center; padding: 10px 0; }
+        .account-guest-box p { font-size: 12.5px; color: #9AA3B5; margin-bottom: 14px; line-height: 1.6; }
+        .account-info-row { display: flex; justify-content: space-between; align-items: center; }
+        .account-email { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #EDEFF3; margin-bottom: 4px; }
+        .account-plan-label { font-size: 11.5px; color: #9AA3B5; }
         .auth-badge { display: flex; align-items: center; gap: 8px; font-size: 11px; }
         .auth-badge-label { color: #9AA3B5; font-family: 'IBM Plex Mono', monospace; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .auth-badge-btn { background: #1A2030; border: 1px solid #232A3B; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
@@ -1304,6 +1606,9 @@ export default function CandleVolt() {
 
       <div className="header">
         <div className="brand">
+          <button className="menu-btn" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+            <Menu size={20} />
+          </button>
           <div className="brand-mark">
             <Zap size={16} strokeWidth={2.6} />
           </div>
@@ -1338,7 +1643,7 @@ export default function CandleVolt() {
                   <button className="auth-badge-btn" onClick={handleLogout}>
                     Log out
                   </button>
-                  </>
+                </>
               )}
             </div>
           )}
@@ -1355,6 +1660,8 @@ export default function CandleVolt() {
           </div>
         )}
 
+        {view === "dashboard" && (
+          <>
         <div className="market-tabs">
           {Object.keys(ASSETS).map((key) => (
             <button
@@ -1457,84 +1764,22 @@ export default function CandleVolt() {
             </div>
           </div>
         </div>
+          </>
+        )}
 
-        <NewsPanel market={market} />
-
-        <div className="bottom-grid">
-          <div className="panel">
-            <div className="panel-title">
-              <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
-              Your Earnings
-            </div>
-            <div className="stat-row">
-              <div className="stat-box">
-                <div className="stat-label"><Users size={11} /> Subscribers</div>
-                <div className="stat-val">312</div>
-              </div>
-              <div className="stat-box">
-                <div className="stat-label"><Wallet size={11} /> This Month</div>
-                <div className="stat-val gold">₹1,86,400</div>
-              </div>
-              <div className="stat-box">
-                <div className="stat-label"><Crown size={11} /> Elite Users</div>
-                <div className="stat-val">44</div>
-              </div>
-            </div>
-            <div className="disclaimer">
-              <ShieldCheck size={16} />
-              <span>
-                Subscriber/earnings numbers above are still illustrative — wire them
-                to your real user table (see backend db.js) once you have paying
-                users. This app delivers signals only; users execute trades on their
-                own broker/exchange account.
-              </span>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-title">
-              <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
-              Subscription Plans
-            </div>
-            <div className="plans-row">
-              {plans.map((p) => (
-                <div
-                  key={p.name}
-                  className={`plan-card ${p.highlight ? "highlight" : ""} ${
-                    currentPlan === p.name ? "active" : ""
-                  }`}
-                >
-                  <div className="plan-head">
-                    <span className="plan-name">
-                      {p.name === "Elite" && <Crown size={13} />}
-                      {p.name}
-                    </span>
-                    <span className="plan-price">
-                      {p.price}
-                      <span>{p.period}</span>
-                    </span>
-                  </div>
-                  <div className="plan-feats">
-                    {p.features.map((f) => (
-                      <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
-                        {f}
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    className="plan-pay-btn"
-                    disabled={p.name === "Free"}
-                    onClick={() => setPayingPlan(p)}
-                  >
-                    <QrCode size={13} />
-                    {p.name === "Free" ? "Current plan" : "Subscribe"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        {view === "news" && <NewsView />}
+        {view === "calendar" && <CalendarView />}
+        {view === "analysis" && <AnalysisView />}
+        {view === "account" && (
+          <AccountView
+            auth={auth}
+            onLogout={handleLogout}
+            onShowAuth={() => setShowAuthModal(true)}
+            plans={plans}
+            currentPlan={currentPlan}
+            onSubscribe={(p) => setPayingPlan(p)}
+          />
+        )}
       </div>
 
       {payingPlan && (
@@ -1552,6 +1797,13 @@ export default function CandleVolt() {
       {showAuthModal && (
         <AuthModal onAuthenticated={handleAuthenticated} onGuest={handleGuest} />
       )}
+
+      <SideMenu
+        open={menuOpen}
+        activeView={view}
+        onSelect={setView}
+        onClose={() => setMenuOpen(false)}
+      />
     </div>
   );
       }
