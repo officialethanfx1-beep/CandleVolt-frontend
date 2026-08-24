@@ -1390,7 +1390,7 @@ export default function CandleVolt() {
           cursor: pointer; text-align: left;
         }
         .side-menu-item:hover { background: #171D2A; }
-        .side-menu-item.active { background: #1A2030; color: #E3A64B; font-weight: 600; }
+        .side-menu-item.active { background: linear-gradient(135deg, #1E2740, #171D2A); color: #E3A64B; font-weight: 600; box-shadow: inset 0 1px 0 rgba(227,166,75,0.1); }
         .coming-soon { text-align: center; padding: 26px 14px; }
         .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
         .analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
