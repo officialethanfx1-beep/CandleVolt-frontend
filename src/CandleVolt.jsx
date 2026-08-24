@@ -1287,9 +1287,9 @@ export default function CandleVolt() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; 
         .app-root {
-          background: #0A0D12;
+          background: radial-gradient(ellipse 1200px 600px at 50% -10%, #161B26 0%, #0A0D12 55%);
           min-height: 100vh;
           color: #EDEFF3;
           font-family: 'Inter', sans-serif;
