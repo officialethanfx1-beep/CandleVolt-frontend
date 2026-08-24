@@ -1370,7 +1370,9 @@ export default function CandleVolt() {
         .menu-scrim-open { background: rgba(4,5,8,0.6); pointer-events: auto; }
         .side-menu {
           position: fixed; top: 0; left: 0; bottom: 0; width: 260px;
-          background: #12161F; border-right: 1px solid #232A3B;
+          background: linear-gradient(180deg, #161C29, #10141C);
+          border-right: 1px solid #232A3B;
+          box-shadow: 20px 0 60px rgba(0,0,0,0.4);
           transform: translateX(-100%); transition: transform .22s ease;
           z-index: 61; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px;
         }
