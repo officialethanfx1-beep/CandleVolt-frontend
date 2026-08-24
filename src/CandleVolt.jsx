@@ -1527,10 +1527,12 @@ export default function CandleVolt() {
           border-radius: 10px;
           padding: 13px 14px;
           border: 1px solid #1B2130;
-          background: #0D1017;
+          background: linear-gradient(180deg, #10141C, #0C0F15);
           border-left: 3px solid #E3A64B;
           position: relative;
+          transition: transform .15s ease, box-shadow .15s ease;
         }
+        .sig-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
         .sig-sell { border-left-color: #E2555A; }
         .sig-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .sig-dir { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12px; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; }
