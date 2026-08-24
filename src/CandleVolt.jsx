@@ -1454,12 +1454,14 @@ export default function CandleVolt() {
           background: #12161F;
           color: #9AA3B5;
           cursor: pointer;
-          transition: all .15s ease;
+          transition: all .18s ease;
         }
         .tab-btn.active {
-          background: #1A2030;
+          background: linear-gradient(135deg, #1E2740, #171D2A);
           color: #E3A64B;
           border-color: #3A2E1C;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(227,166,75,0.1);
+        }
         }
 
         .layout {
