@@ -1298,7 +1298,7 @@ export default function CandleVolt() {
         .ticker-wrap {
           overflow: hidden;
           border-bottom: 1px solid #232A3B;
-          background: #0D1017;
+          background: linear-gradient(180deg, #0F131B, #0A0D12);
           white-space: nowrap;
         }
         .ticker-track {
