@@ -1343,7 +1343,8 @@ export default function CandleVolt() {
         .brand-mark {
           width: 30px; height: 30px;
           border-radius: 7px;
-          background: linear-gradient(135deg, #E3A64B, #C97A2E);
+          background: linear-gradient(135deg, #F0B65C, #C97A2E);
+          box-shadow: 0 2px 10px rgba(227,166,75,0.35);
           display: flex; align-items: center; justify-content: center;
           color: #0A0D12;
         }
@@ -1352,6 +1353,7 @@ export default function CandleVolt() {
           font-size: 11px; font-family: 'IBM Plex Mono', monospace;
           color: #9AA3B5;
           border: 1px solid #232A3B;
+          background: #0F131B;
           padding: 5px 10px;
           border-radius: 20px;
         }
