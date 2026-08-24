@@ -1666,9 +1666,11 @@ export default function CandleVolt() {
         .rzp-box p { font-size: 12px; color: #9AA3B5; line-height: 1.6; margin: 0 0 14px; }
         .rzp-btn {
           width: 100%; padding: 10px; border-radius: 8px; border: none;
-          background: linear-gradient(135deg, #E3A64B, #C97A2E); color: #0A0D12;
+          background: linear-gradient(135deg, #F0B65C, #C97A2E); color: #0A0D12;
           font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px; cursor: pointer;
+          box-shadow: 0 4px 14px rgba(227,166,75,0.25); transition: transform .12s ease, box-shadow .12s ease;
         }
+        .rzp-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(227,166,75,0.35); }
         .rzp-btn:disabled { opacity: 0.6; cursor: default; }
         .rzp-error { margin-top: 10px; color: #E2555A; font-size: 11.5px; }
         .exact-amount-box { background: #171307; border: 1px solid #3A2E1C; border-radius: 10px; padding: 12px; margin-bottom: 12px; text-align: center; }
