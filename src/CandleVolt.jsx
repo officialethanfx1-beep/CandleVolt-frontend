@@ -26,21 +26,6 @@ import {
   UserCircle,
 } from "lucide-react";
 
-// ---------------------------------------------------------------------------
-// Design tokens
-// bg-void:   #0A0D12   deep charcoal-navy, not pure black
-// bg-panel:  #12161F   card surface
-// bg-raised: #1A2030   raised surface / hover
-// line:      #232A3B   hairline borders
-// gold:      #E3A64B   bullish / buy / primary accent (terminal-amber, not neon)
-// rose:      #E2555A   bearish / sell
-// text-hi:   #EDEFF3
-// text-mid:  #9AA3B5
-// text-lo:   #5C6478
-// ---------------------------------------------------------------------------
-
-// >>> Point this at your deployed backend (see candlevolt-backend/README.md).
-// Left as localhost so it's obvious this needs changing before going live.
 const BACKEND_URL = "https://candlevolt-backend-qsyr.onrender.com";
 
 const ASSETS = {
@@ -107,14 +92,10 @@ function fmtCountdown(ms) {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-// simple per-session id — not persisted (artifacts can't use browser storage),
-// so it resets on reload. Swap for real auth once you add user accounts.
 function makeSessionId() {
   return `sess-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 }
 
-// Real localStorage is fine here — this is a real deployed website (Vercel),
-// not a claude.ai artifact sandbox, so normal browser storage APIs work.
 const LS_TOKEN = "candlevolt_token";
 const LS_USERID = "candlevolt_userid";
 const LS_EMAIL = "candlevolt_email";
@@ -126,7 +107,6 @@ function loadStoredAuth() {
     const email = localStorage.getItem(LS_EMAIL);
     if (token && userId) return { token, userId, email };
   } catch {
-    // storage may be unavailable (private mode etc.) — just skip persistence
   }
   return null;
 }
@@ -137,7 +117,6 @@ function saveStoredAuth({ token, userId, email }) {
     localStorage.setItem(LS_USERID, userId);
     if (email) localStorage.setItem(LS_EMAIL, email);
   } catch {
-    // ignore
   }
 }
 
@@ -147,20 +126,14 @@ function clearStoredAuth() {
     localStorage.removeItem(LS_USERID);
     localStorage.removeItem(LS_EMAIL);
   } catch {
-    // ignore
   }
 }
 
-// Manual timeout wrapper — avoids relying on AbortSignal.timeout(), which
-// isn't available on every mobile browser/webview. Also gives Render's free
-// tier enough time to wake from sleep (can take 20-40s on a cold start).
 function fetchWithTimeout(url, ms = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
 }
-
-// ---------------------------------------------------------------------------
 
 function Sparkline({ data, positive }) {
   const points = data.map((v, i) => ({ i, v }));
@@ -182,9 +155,6 @@ function Sparkline({ data, positive }) {
   );
 }
 
-// Real OHLC candlestick chart (TradingView's lightweight-charts) — only
-// meaningful for crypto/meme symbols, since that's the only feed with true
-// per-minute open/high/low/close data (see backend candleStore.js).
 function CandlestickChart({ symbol }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -254,7 +224,6 @@ function CandlestickChart({ symbol }) {
         }));
         if (candles.length) seriesRef.current.setData(candles);
       } catch {
-        // keep showing the last known candles rather than clearing the chart
       }
     };
 
@@ -279,9 +248,6 @@ function timeAgoShort(ts) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// Live news, polled from free RSS feeds on the backend (see newsFeed.js) —
-// updates every ~2 minutes, which is as close to real-time as a free news
-// source gets without a paid data provider.
 function NewsPanel({ market }) {
   const [items, setItems] = useState([]);
   const category = market === "forex" || market === "commodities" ? "forex" : "crypto";
@@ -297,7 +263,6 @@ function NewsPanel({ market }) {
         const data = await res.json();
         if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
       } catch {
-        // keep whatever headlines we already have
       }
     };
     poll();
@@ -438,10 +403,6 @@ function SignalCard({ sig, locked, remainingMs }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Navigation: side menu + the standalone views it switches between
-// ---------------------------------------------------------------------------
-
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "news", label: "News", icon: Newspaper },
@@ -487,8 +448,6 @@ function SideMenu({ open, activeView, onSelect, onClose }) {
   );
 }
 
-// Full-page news view — both categories side by side with a toggle, more
-// headlines than the compact dashboard teaser.
 function NewsView() {
   const [category, setCategory] = useState("crypto");
   const [items, setItems] = useState([]);
@@ -504,7 +463,6 @@ function NewsView() {
         const data = await res.json();
         if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
       } catch {
-        // keep whatever headlines we already have
       }
     };
     poll();
@@ -549,30 +507,88 @@ function NewsView() {
   );
 }
 
-// Placeholder — the real economic calendar (CPI, PPI, NFP, FOMC etc. from a
-// free ForexFactory-style feed) is next on the roadmap, not faked here.
+function fmtEventTime(dateStr) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function CalendarView() {
+  const [events, setEvents] = useState([]);
+  const [impact, setImpact] = useState("all");
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const url =
+          impact === "all"
+            ? `${BACKEND_URL}/api/calendar`
+            : `${BACKEND_URL}/api/calendar?impact=${impact}`;
+        const res = await fetchWithTimeout(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setEvents(Array.isArray(data?.events) ? data.events : []);
+      } catch {
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5 * 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [impact]);
+
   return (
     <div className="panel">
       <div className="panel-title">
         <CalendarClock size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
         Market Calendar
       </div>
-      <div className="coming-soon">
-        <CalendarClock size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
-        <p>
-          Economic calendar — CPI, PPI, NFP, FOMC and other major releases —
-          is coming soon. It'll pull from a free public calendar feed, same
-          spirit as the news panel.
-        </p>
+      <div className="market-tabs" style={{ marginBottom: 14 }}>
+        {["all", "High", "Medium", "Low"].map((lvl) => (
+          <button
+            key={lvl}
+            className={`tab-btn ${impact === lvl ? "active" : ""}`}
+            onClick={() => setImpact(lvl)}
+          >
+            {lvl === "all" ? "All" : lvl}
+          </button>
+        ))}
+      </div>
+      <div className="cal-feed">
+        {events.length === 0 && (
+          <div className="empty-state">Fetching this week's economic calendar…</div>
+        )}
+        {events.map((e) => (
+          <div key={e.id} className={`cal-item cal-${(e.impact || "").toLowerCase()}`}>
+            <div className="cal-top">
+              <span className="cal-country">{e.country}</span>
+              <span className={`cal-impact cal-impact-${(e.impact || "").toLowerCase()}`}>
+                {e.impact}
+              </span>
+            </div>
+            <div className="cal-title">{e.title}</div>
+            <div className="cal-time">{fmtEventTime(e.date)}</div>
+            <div className="cal-figures">
+              <span>Forecast: {e.forecast || "—"}</span>
+              <span>Previous: {e.previous || "—"}</span>
+              <span>Actual: {e.actual || "—"}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-// Placeholder — the real AI-generated daily market summary (built from the
-// live prices/news/signals already flowing through the backend) is next on
-// the roadmap. No fabricated "predictions" shown here in the meantime.
 function AnalysisView() {
   return (
     <div className="panel">
@@ -696,7 +712,7 @@ function AccountView({ auth, onLogout, onShowAuth, plans, currentPlan, onSubscri
 }
 
 function AuthModal({ onAuthenticated, onGuest }) {
-  const [mode, setMode] = useState("login"); // login | signup
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -802,11 +818,9 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
   const [rzpLoading, setRzpLoading] = useState(false);
   const [rzpError, setRzpError] = useState("");
 
-  // Real crypto order state — created on the backend so the exact amount
-  // is unique to this order and can be auto-matched on-chain.
   const [cryptoOrder, setCryptoOrder] = useState(null);
   const [cryptoError, setCryptoError] = useState("");
-  const [cryptoStatus, setCryptoStatus] = useState("pending"); // pending | paid | expired
+  const [cryptoStatus, setCryptoStatus] = useState("pending");
 
   useEffect(() => {
     if (tab !== "crypto" || cryptoOrder) return;
@@ -831,7 +845,6 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
     };
   }, [tab, cryptoOrder, sessionId, plan.name]);
 
-  // Poll for automatic on-chain confirmation — no admin action needed.
   useEffect(() => {
     if (!cryptoOrder || cryptoStatus !== "pending") return;
     const id = setInterval(async () => {
@@ -848,7 +861,6 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
           setCryptoStatus("expired");
         }
       } catch {
-        // ignore transient poll failures
       }
     }, 5000);
     return () => clearInterval(id);
@@ -914,7 +926,7 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
       });
       rzp.on("payment.failed", () => setRzpError("Payment failed or was cancelled."));
       rzp.open();
-    } catch (e) {
+      } catch (e) {
       setRzpError(
         e.message === "Order creation failed"
           ? "Couldn't reach the backend — is it running and is BACKEND_URL set correctly?"
@@ -1056,8 +1068,6 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-
 export default function CandleVolt() {
   const [market, setMarket] = useState("crypto");
   const [view, setView] = useState("dashboard");
@@ -1077,9 +1087,6 @@ export default function CandleVolt() {
   const [now, setNow] = useState(Date.now());
   const [connected, setConnected] = useState(true);
 
-  // ---- Auth state ----
-  // auth is null until we've resolved it (either a real account or a guest
-  // session). authChecked flips true once that resolution attempt is done.
   const [auth, setAuth] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -1135,8 +1142,6 @@ export default function CandleVolt() {
     return () => clearInterval(id);
   }, []);
 
-  // Poll the real backend for prices — falls back to holding the last known
-  // value (and flags "offline") if the backend isn't reachable yet.
   const pollPrices = useCallback(async () => {
     try {
       const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
@@ -1166,8 +1171,6 @@ export default function CandleVolt() {
     }
   }, []);
 
-  // Poll real signals for the active market — free-plan delay is enforced
-  // server-side, so whatever we get back here is already correctly gated.
   const pollSignals = useCallback(async () => {
     if (!effectiveUserId) return;
     try {
@@ -1179,7 +1182,6 @@ export default function CandleVolt() {
       setSignals(Array.isArray(data?.signals) ? data.signals : []);
     } catch (e) {
       console.warn("[CandleVolt] signal poll failed:", e?.message);
-      // keep whatever signals we already have rather than clearing them
     }
   }, [market, effectiveUserId]);
 
@@ -1345,6 +1347,20 @@ export default function CandleVolt() {
         .side-menu-item.active { background: #1A2030; color: #E3A64B; font-weight: 600; }
         .coming-soon { text-align: center; padding: 26px 14px; }
         .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
+        .cal-feed { display: flex; flex-direction: column; gap: 8px; max-height: 560px; overflow-y: auto; }
+        .cal-item { background: #0D1017; border: 1px solid #1B2130; border-left: 3px solid #5C6478; border-radius: 8px; padding: 10px 12px; }
+        .cal-high { border-left-color: #E2555A; }
+        .cal-medium { border-left-color: #E3A64B; }
+        .cal-low { border-left-color: #5C6478; }
+        .cal-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .cal-country { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9AA3B5; }
+        .cal-impact { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; }
+        .cal-impact-high { color: #E2555A; background: rgba(226,85,90,0.12); }
+        .cal-impact-medium { color: #E3A64B; background: rgba(227,166,75,0.12); }
+        .cal-impact-low { color: #9AA3B5; background: rgba(154,163,181,0.12); }
+        .cal-title { font-size: 13px; color: #EDEFF3; font-weight: 500; margin-bottom: 4px; }
+        .cal-time { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px; }
+        .cal-figures { display: flex; gap: 12px; font-size: 10.5px; color: #9AA3B5; flex-wrap: wrap; }
         .account-guest-box { text-align: center; padding: 10px 0; }
         .account-guest-box p { font-size: 12.5px; color: #9AA3B5; margin-bottom: 14px; line-height: 1.6; }
         .account-info-row { display: flex; justify-content: space-between; align-items: center; }
@@ -1540,7 +1556,6 @@ export default function CandleVolt() {
         }
         .plan-pay-btn:hover { background: #212940; }
         .plan-pay-btn:disabled { opacity: 0.35; cursor: default; }
-
         .disclaimer {
           margin-top: 24px; padding: 12px 14px; border-radius: 10px;
           background: #14110A; border: 1px solid #2A2013;
@@ -1806,4 +1821,4 @@ export default function CandleVolt() {
       />
     </div>
   );
-      }
+        }
