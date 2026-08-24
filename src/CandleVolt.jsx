@@ -1589,11 +1589,19 @@ export default function CandleVolt() {
 
         .plans-row { display: flex; flex-direction: column; gap: 10px; }
         .plan-card {
-          border: 1px solid #1B2130; border-radius: 10px; padding: 13px 14px;
+          border: 1px solid #1B2130; border-radius: 12px; padding: 13px 14px;
           background: #0D1017; cursor: pointer;
+          transition: transform .15s ease, box-shadow .15s ease;
         }
-        .plan-card.highlight { border-color: #3A2E1C; background: #14110A; }
+        .plan-card.highlight {
+          border: 1px solid transparent;
+          background:
+            linear-gradient(#14110A, #14110A) padding-box,
+            linear-gradient(135deg, #E3A64B, #7A5620) border-box;
+          box-shadow: 0 6px 20px rgba(227,166,75,0.12);
+        }
         .plan-card.active { outline: 1.5px solid #E3A64B; }
+        .plan-card:hover { transform: translateY(-1px); }
         .plan-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .plan-name { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
         .plan-price { font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #E3A64B; }
