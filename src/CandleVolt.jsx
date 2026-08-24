@@ -588,126 +588,67 @@ function CalendarView() {
     </div>
   );
 }
-
 function AnalysisView() {
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetchWithTimeout(`${BACKEND_URL}/api/analysis`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setAnalysis(data);
+      } catch {
+        // keep whatever we already have
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5 * 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   return (
     <div className="panel">
       <div className="panel-title">
         <Sparkles size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
         Daily Analysis
       </div>
-      <div className="coming-soon">
-        <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
-        <p>
-          A daily AI-generated market summary — built from real prices, news,
-          and signals — is coming soon. Any market outlook here will always
-          be a read on current conditions, never a guaranteed prediction.
-        </p>
-      </div>
+
+      {loading && (
+        <div className="empty-state">Loading the latest briefing…</div>
+      )}
+
+      {!loading && !analysis?.text && (
+        <div className="coming-soon">
+          <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
+          <p>No briefing generated yet — check back shortly.</p>.analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
+.analysis-text { font-size: 13.5px; color: #EDEFF3; line-height: 1.8; white-space: pre-wrap; margin-bottom: 16px; }
+        </div>
+      )}
+
+      {!loading && analysis?.text && (
+        <>
+          <div className="analysis-updated">
+            Last updated {timeAgoShort(analysis.generatedAt)}
+          </div>
+          <div className="analysis-text">{analysis.text}</div>
+          <div className="disclaimer">
+            <ShieldCheck size={16} />
+            <span>
+              AI-generated read on current conditions — not a guaranteed
+              prediction. Always do your own research before trading.
+            </span>
+          </div>
+        </>
+      )}
     </div>
-  );
-}
-
-function AccountView({ auth, onLogout, onShowAuth, plans, currentPlan, onSubscribe }) {
-  return (
-    <>
-      <div className="panel">
-        <div className="panel-title">
-          <UserCircle size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
-          Account
-        </div>
-        {auth?.guest ? (
-          <div className="account-guest-box">
-            <p>You're browsing as a guest — your plan won't be saved if you clear this device.</p>
-            <button className="rzp-btn" onClick={onShowAuth}>
-              Sign up or log in
-            </button>
-          </div>
-        ) : (
-          <div className="account-info-row">
-            <div>
-              <div className="account-email">{auth?.email}</div>
-              <div className="account-plan-label">Current plan: {currentPlan}</div>
-            </div>
-            <button className="auth-badge-btn" onClick={onLogout}>
-              Log out
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="panel" style={{ marginTop: 20 }}>
-        <div className="panel-title">
-          <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
-          Subscription Plans
-        </div>
-        <div className="plans-row">
-          {plans.map((p) => (
-            <div
-              key={p.name}
-              className={`plan-card ${p.highlight ? "highlight" : ""} ${
-                currentPlan === p.name ? "active" : ""
-              }`}
-            >
-              <div className="plan-head">
-                <span className="plan-name">
-                  {p.name === "Elite" && <Crown size={13} />}
-                  {p.name}
-                </span>
-                <span className="plan-price">
-                  {p.price}
-                  <span>{p.period}</span>
-                </span>
-              </div>
-              <div className="plan-feats">
-                {p.features.map((f) => (
-                  <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
-                    {f}
-                  </div>
-                ))}
-              </div>
-              <button
-                className="plan-pay-btn"
-                disabled={p.name === "Free"}
-                onClick={() => onSubscribe(p)}
-              >
-                <QrCode size={13} />
-                {p.name === "Free" ? "Current plan" : "Subscribe"}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="panel" style={{ marginTop: 20 }}>
-        <div className="panel-title">
-          <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
-          Your Earnings
-        </div>
-        <div className="stat-row">
-          <div className="stat-box">
-            <div className="stat-label"><Users size={11} /> Subscribers</div>
-            <div className="stat-val">312</div>
-          </div>
-          <div className="stat-box">
-            <div className="stat-label"><Wallet size={11} /> This Month</div>
-            <div className="stat-val gold">₹1,86,400</div>
-          </div>
-          <div className="stat-box">
-            <div className="stat-label"><Crown size={11} /> Elite Users</div>
-            <div className="stat-val">44</div>
-          </div>
-        </div>
-        <div className="disclaimer">
-          <ShieldCheck size={16} />
-          <span>
-            Illustrative numbers — wire them to your real user table (see
-            backend db.js) once you have paying users.
-          </span>
-        </div>
-      </div>
-    </>
   );
 }
 
