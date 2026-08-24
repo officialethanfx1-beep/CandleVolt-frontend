@@ -626,7 +626,8 @@ function AnalysisView() {
       )}
 
       {!loading && !analysis?.text && (
-        <div className="coming-soon">
+        <div className="coming-soon">.analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
+.analysis-text { font-size: 13.5px; color: #EDEFF3; line-height: 1.8; white-space: pre-wrap; margin-bottom: 16px; }
           <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
           <p>No briefing generated yet — check back shortly.</p>
         </div>
