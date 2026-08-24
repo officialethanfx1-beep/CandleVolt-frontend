@@ -1611,9 +1611,9 @@ export default function CandleVolt() {
           width: 100%; padding: 8px; border-radius: 7px; border: 1px solid #3A2E1C;
           background: #1A2030; color: #E3A64B; font-family: 'Space Grotesk', sans-serif;
           font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center;
-          justify-content: center; gap: 6px;
+          justify-content: center; gap: 6px; transition: all .15s ease;
         }
-        .plan-pay-btn:hover { background: #212940; }
+        .plan-pay-btn:hover:not(:disabled) { background: #212940; box-shadow: 0 2px 10px rgba(227,166,75,0.15); }
         .plan-pay-btn:disabled { opacity: 0.35; cursor: default; }
 
         .disclaimer {
