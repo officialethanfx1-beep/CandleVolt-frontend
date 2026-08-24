@@ -246,8 +246,7 @@ function timeAgoShort(ts) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
-}
-
+    }
 function NewsPanel({ market }) {
   const [items, setItems] = useState([]);
   const category = market === "forex" || market === "commodities" ? "forex" : "crypto";
@@ -588,6 +587,7 @@ function CalendarView() {
     </div>
   );
 }
+
 function AnalysisView() {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -601,7 +601,6 @@ function AnalysisView() {
         const data = await res.json();
         if (!cancelled) setAnalysis(data);
       } catch {
-        // keep whatever we already have
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -626,8 +625,7 @@ function AnalysisView() {
       )}
 
       {!loading && !analysis?.text && (
-        <div className="coming-soon">.analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
-.analysis-text { font-size: 13.5px; color: #EDEFF3; line-height: 1.8; white-space: pre-wrap; margin-bottom: 16px; }
+        <div className="coming-soon">
           <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
           <p>No briefing generated yet — check back shortly.</p>
         </div>
@@ -649,6 +647,109 @@ function AnalysisView() {
         </>
       )}
     </div>
+  );
+}
+
+function AccountView({ auth, onLogout, onShowAuth, plans, currentPlan, onSubscribe }) {
+  return (
+    <>
+      <div className="panel">
+        <div className="panel-title">
+          <UserCircle size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Account
+        </div>
+        {auth?.guest ? (
+          <div className="account-guest-box">
+            <p>You're browsing as a guest — your plan won't be saved if you clear this device.</p>
+            <button className="rzp-btn" onClick={onShowAuth}>
+              Sign up or log in
+            </button>
+          </div>
+        ) : (
+          <div className="account-info-row">
+            <div>
+              <div className="account-email">{auth?.email}</div>
+              <div className="account-plan-label">Current plan: {currentPlan}</div>
+            </div>
+            <button className="auth-badge-btn" onClick={onLogout}>
+              Log out
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-title">
+          <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Subscription Plans
+        </div>
+        <div className="plans-row">
+          {plans.map((p) => (
+            <div
+              key={p.name}
+              className={`plan-card ${p.highlight ? "highlight" : ""} ${
+                currentPlan === p.name ? "active" : ""
+              }`}
+            >
+              <div className="plan-head">
+                <span className="plan-name">
+                  {p.name === "Elite" && <Crown size={13} />}
+                  {p.name}
+                </span>
+                <span className="plan-price">
+                  {p.price}
+                  <span>{p.period}</span>
+                </span>
+              </div>
+              <div className="plan-feats">
+                {p.features.map((f) => (
+                  <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <button
+                className="plan-pay-btn"
+                disabled={p.name === "Free"}
+                onClick={() => onSubscribe(p)}
+              >
+                <QrCode size={13} />
+                {p.name === "Free" ? "Current plan" : "Subscribe"}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-title">
+          <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Your Earnings
+        </div>
+        <div className="stat-row">
+          <div className="stat-box">
+            <div className="stat-label"><Users size={11} /> Subscribers</div>
+            <div className="stat-val">312</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label"><Wallet size={11} /> This Month</div>
+            <div className="stat-val gold">₹1,86,400</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label"><Crown size={11} /> Elite Users</div>
+            <div className="stat-val">44</div>
+          </div>
+        </div>
+        <div className="disclaimer">
+          <ShieldCheck size={16} />
+          <span>
+            Illustrative numbers — wire them to your real user table (see
+            backend db.js) once you have paying users.
+          </span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -867,7 +968,7 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
       });
       rzp.on("payment.failed", () => setRzpError("Payment failed or was cancelled."));
       rzp.open();
-      } catch (e) {
+    } catch (e) {
       setRzpError(
         e.message === "Order creation failed"
           ? "Couldn't reach the backend — is it running and is BACKEND_URL set correctly?"
@@ -1273,7 +1374,7 @@ export default function CandleVolt() {
         }
         .side-menu-open { transform: translateX(0); }
         .side-menu-head {
-          display: flex; align-items: center; gap: 10px;
+        display: flex; align-items: center; gap: 10px;
           font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px;
           padding: 4px 10px 18px;
         }
@@ -1288,6 +1389,8 @@ export default function CandleVolt() {
         .side-menu-item.active { background: #1A2030; color: #E3A64B; font-weight: 600; }
         .coming-soon { text-align: center; padding: 26px 14px; }
         .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
+        .analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
+        .analysis-text { font-size: 13.5px; color: #EDEFF3; line-height: 1.8; white-space: pre-wrap; margin-bottom: 16px; }
         .cal-feed { display: flex; flex-direction: column; gap: 8px; max-height: 560px; overflow-y: auto; }
         .cal-item { background: #0D1017; border: 1px solid #1B2130; border-left: 3px solid #5C6478; border-radius: 8px; padding: 10px 12px; }
         .cal-high { border-left-color: #E2555A; }
@@ -1497,6 +1600,7 @@ export default function CandleVolt() {
         }
         .plan-pay-btn:hover { background: #212940; }
         .plan-pay-btn:disabled { opacity: 0.35; cursor: default; }
+
         .disclaimer {
           margin-top: 24px; padding: 12px 14px; border-radius: 10px;
           background: #14110A; border: 1px solid #2A2013;
@@ -1762,4 +1866,4 @@ export default function CandleVolt() {
       />
     </div>
   );
-        }
+          }
