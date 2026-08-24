@@ -1474,10 +1474,11 @@ export default function CandleVolt() {
         }
 
         .panel {
-          background: #12161F;
+          background: linear-gradient(180deg, #141924, #10141C);
           border: 1px solid #1B2130;
-          border-radius: 12px;
+          border-radius: 14px;
           padding: 16px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.25);
         }
         .panel-title {
           font-family: 'Space Grotesk', sans-serif;
