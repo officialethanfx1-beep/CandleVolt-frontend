@@ -1628,12 +1628,15 @@ export default function CandleVolt() {
 
         .modal-backdrop {
           position: fixed; inset: 0; background: rgba(4,5,8,0.72);
+          backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
           display: flex; align-items: center; justify-content: center;
           z-index: 50; padding: 16px;
         }
         .modal-card {
-          background: #12161F; border: 1px solid #232A3B; border-radius: 14px;
+          background: linear-gradient(180deg, #161C29, #12161F);
+          border: 1px solid #232A3B; border-radius: 16px;
           padding: 18px; width: 100%; max-width: 340px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.5);
         }
         .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .modal-title { display: flex; align-items: center; gap: 7px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; color: #E3A64B; }
