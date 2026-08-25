@@ -26,6 +26,21 @@ import {
   UserCircle,
 } from "lucide-react";
 
+// ---------------------------------------------------------------------------
+// Design tokens
+// bg-void:   #0A0D12   deep charcoal-navy, not pure black
+// bg-panel:  #12161F   card surface
+// bg-raised: #1A2030   raised surface / hover
+// line:      #232A3B   hairline borders
+// gold:      #E3A64B   bullish / buy / primary accent (terminal-amber, not neon)
+// rose:      #E2555A   bearish / sell
+// text-hi:   #EDEFF3
+// text-mid:  #9AA3B5
+// text-lo:   #5C6478
+// ---------------------------------------------------------------------------
+
+// >>> Point this at your deployed backend (see candlevolt-backend/README.md).
+// Left as localhost so it's obvious this needs changing before going live.
 const BACKEND_URL = "https://candlevolt-backend-qsyr.onrender.com";
 
 const ASSETS = {
@@ -92,10 +107,14 @@ function fmtCountdown(ms) {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
+// simple per-session id — not persisted (artifacts can't use browser storage),
+// so it resets on reload. Swap for real auth once you add user accounts.
 function makeSessionId() {
   return `sess-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 }
 
+// Real localStorage is fine here — this is a real deployed website (Vercel),
+// not a claude.ai artifact sandbox, so normal browser storage APIs work.
 const LS_TOKEN = "candlevolt_token";
 const LS_USERID = "candlevolt_userid";
 const LS_EMAIL = "candlevolt_email";
@@ -107,9 +126,10 @@ function loadStoredAuth() {
     const email = localStorage.getItem(LS_EMAIL);
     if (token && userId) return { token, userId, email };
   } catch {
+    // storage may be unavailable (private mode etc.) — just skip persistence
   }
   return null;
-}
+  }
 
 function saveStoredAuth({ token, userId, email }) {
   try {
@@ -117,6 +137,7 @@ function saveStoredAuth({ token, userId, email }) {
     localStorage.setItem(LS_USERID, userId);
     if (email) localStorage.setItem(LS_EMAIL, email);
   } catch {
+    // ignore
   }
 }
 
@@ -126,14 +147,20 @@ function clearStoredAuth() {
     localStorage.removeItem(LS_USERID);
     localStorage.removeItem(LS_EMAIL);
   } catch {
+    // ignore
   }
 }
 
+// Manual timeout wrapper — avoids relying on AbortSignal.timeout(), which
+// isn't available on every mobile browser/webview. Also gives Render's free
+// tier enough time to wake from sleep (can take 20-40s on a cold start).
 function fetchWithTimeout(url, ms = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
 }
+
+// ---------------------------------------------------------------------------
 
 function Sparkline({ data, positive }) {
   const points = data.map((v, i) => ({ i, v }));
@@ -155,6 +182,9 @@ function Sparkline({ data, positive }) {
   );
 }
 
+// Real OHLC candlestick chart (TradingView's lightweight-charts) — only
+// meaningful for crypto/meme symbols, since that's the only feed with true
+// per-minute open/high/low/close data (see backend candleStore.js).
 function CandlestickChart({ symbol }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -179,7 +209,6 @@ function CandlestickChart({ symbol }) {
       rightPriceScale: { borderColor: "#232A3B" },
       crosshair: { mode: 0 },
     });
-
     const series = chart.addCandlestickSeries({
       upColor: "#E3A64B",
       downColor: "#E2555A",
@@ -224,6 +253,7 @@ function CandlestickChart({ symbol }) {
         }));
         if (candles.length) seriesRef.current.setData(candles);
       } catch {
+        // keep showing the last known candles rather than clearing the chart
       }
     };
 
@@ -246,7 +276,11 @@ function timeAgoShort(ts) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
-    }
+}
+
+// Live news, polled from free RSS feeds on the backend (see newsFeed.js) —
+// updates every ~2 minutes, which is as close to real-time as a free news
+// source gets without a paid data provider.
 function NewsPanel({ market }) {
   const [items, setItems] = useState([]);
   const category = market === "forex" || market === "commodities" ? "forex" : "crypto";
@@ -262,6 +296,7 @@ function NewsPanel({ market }) {
         const data = await res.json();
         if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
       } catch {
+        // keep whatever headlines we already have
       }
     };
     poll();
@@ -271,8 +306,7 @@ function NewsPanel({ market }) {
       clearInterval(id);
     };
   }, [category]);
-
-  return (
+      return (
     <div className="panel">
       <div className="panel-title">
         <Radio size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
@@ -348,8 +382,7 @@ function SignalCard({ sig, locked, remainingMs }) {
         </div>
       </div>
     );
-  }
-
+        }
   return (
     <div className={`sig-card ${isBuy ? "sig-buy" : "sig-sell"}`}>
       <div className="sig-top">
@@ -402,6 +435,10 @@ function SignalCard({ sig, locked, remainingMs }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Navigation: side menu + the standalone views it switches between
+// ---------------------------------------------------------------------------
+
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "news", label: "News", icon: Newspaper },
@@ -445,8 +482,9 @@ function SideMenu({ open, activeView, onSelect, onClose }) {
       </div>
     </>
   );
-}
-
+          }
+// Full-page news view — both categories side by side with a toggle, more
+// headlines than the compact dashboard teaser.
 function NewsView() {
   const [category, setCategory] = useState("crypto");
   const [items, setItems] = useState([]);
@@ -462,6 +500,7 @@ function NewsView() {
         const data = await res.json();
         if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
       } catch {
+        // keep whatever headlines we already have
       }
     };
     poll();
@@ -506,6 +545,8 @@ function NewsView() {
   );
 }
 
+// Placeholder — the real economic calendar (CPI, PPI, NFP, FOMC etc. from a
+// free ForexFactory-style feed) is next on the roadmap, not faked here.
 function fmtEventTime(dateStr) {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
@@ -517,7 +558,6 @@ function fmtEventTime(dateStr) {
     minute: "2-digit",
   });
 }
-
 function CalendarView() {
   const [events, setEvents] = useState([]);
   const [impact, setImpact] = useState("all");
@@ -535,6 +575,7 @@ function CalendarView() {
         const data = await res.json();
         if (!cancelled) setEvents(Array.isArray(data?.events) ? data.events : []);
       } catch {
+        // keep whatever events we already have
       }
     };
     poll();
@@ -586,8 +627,10 @@ function CalendarView() {
       </div>
     </div>
   );
-}
-
+            }
+// Placeholder — the real AI-generated daily market summary (built from the
+// live prices/news/signals already flowing through the backend) is next on
+// the roadmap. No fabricated "predictions" shown here in the meantime.
 function AnalysisView() {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -601,6 +644,7 @@ function AnalysisView() {
         const data = await res.json();
         if (!cancelled) setAnalysis(data);
       } catch {
+        // keep whatever we already have
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -650,34 +694,146 @@ function AnalysisView() {
   );
 }
 
-function AccountView({ auth, onLogout, onShowAuth, plans, currentPlan, onSubscribe }) {
+function AccountView({ auth, onLogout, onShowAuth, onProfileSaved, plans, currentPlan, onSubscribe }) {
+  const [form, setForm] = useState({
+    username: auth?.profile?.username || "",
+    firstName: auth?.profile?.firstName || "",
+    lastName: auth?.profile?.lastName || "",
+    country: auth?.profile?.country || "",
+    bio: auth?.profile?.bio || "",
+    avatar: auth?.profile?.avatar || null,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const fileRef = useRef(null);
+
+  const handleAvatar = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 160;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const s = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+        setForm((f) => ({ ...f, avatar: canvas.toDataURL("image/jpeg", 0.82) }));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  const save = async () => {
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const stored = loadStoredAuth();
+      const res = await fetch(`${BACKEND_URL}/api/auth/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${stored?.token}`,
+        },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaveMsg("Saved.");
+        onProfileSaved(data.profile);
+      } else {
+        setSaveMsg(data.error || "Could not save.");
+      }
+    } catch {
+      setSaveMsg("Couldn't reach the server.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <div className="panel">
         <div className="panel-title">
           <UserCircle size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
-          Account
+          Profile
         </div>
         {auth?.guest ? (
           <div className="account-guest-box">
-            <p>You're browsing as a guest — your plan won't be saved if you clear this device.</p>
+            <p>You're browsing as a guest — sign in to save your profile and plan.</p>
             <button className="rzp-btn" onClick={onShowAuth}>
-              Sign up or log in
+              Sign in
             </button>
           </div>
         ) : (
-          <div className="account-info-row">
-            <div>
-              <div className="account-email">{auth?.email}</div>
-              <div className="account-plan-label">Current plan: {currentPlan}</div>
+          <>
+            <div className="profile-avatar-row">
+              <div className="profile-avatar" onClick={() => fileRef.current?.click()}>
+                {form.avatar ? <img src={form.avatar} alt="avatar" /> : <UserCircle size={36} />}
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleAvatar}
+              />
+              <div>
+                <div className="account-email">{auth?.email}</div>
+                <div className="account-plan-label">Current plan: {currentPlan}</div>
+              </div>
             </div>
-            <button className="auth-badge-btn" onClick={onLogout}>
+
+            <input
+              className="auth-input"
+              placeholder="Username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="auth-input"
+                placeholder="First name"
+                value={form.firstName}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              />
+              <input
+                className="auth-input"
+                placeholder="Last name"
+                value={form.lastName}
+                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              />
+            </div>
+            <input
+              className="auth-input"
+              placeholder="Country"
+              value={form.country}
+              onChange={(e) => setForm({ ...form, country: e.target.value })}
+            />
+            <textarea
+              className="auth-input profile-bio"
+              placeholder="Bio"
+              rows={3}
+              value={form.bio}
+              onChange={(e) => setForm({ ...form, bio: e.target.value })}
+            />
+
+            <button className="rzp-btn" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save profile"}
+            </button>
+            {saveMsg && <div className="profile-save-msg">{saveMsg}</div>}
+
+            <button className="auth-badge-btn" style={{ marginTop: 12 }} onClick={onLogout}>
               Log out
             </button>
-          </div>
+          </>
         )}
       </div>
-
+      
       <div className="panel" style={{ marginTop: 20 }}>
         <div className="panel-title">
           <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
@@ -753,36 +909,32 @@ function AccountView({ auth, onLogout, onShowAuth, plans, currentPlan, onSubscri
   );
 }
 
-function AuthModal({ onAuthenticated, onGuest }) {
-  const [mode, setMode] = useState("login");
+function AuthModal({ onAuthenticated, onClose }) {
+  const [step, setStep] = useState("email"); // email | otp
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = async () => {
+  const requestOtp = async () => {
     setError("");
-    if (!email || !password) {
-      setError("Enter your email and password.");
+    if (!email) {
+      setError("Enter your email.");
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/auth/${mode === "login" ? "login" : "signup"}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
+      const res = await fetch(`${BACKEND_URL}/api/auth/request-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Something went wrong.");
         return;
       }
-      saveStoredAuth({ token: data.token, userId: data.userId, email: data.email });
-      onAuthenticated({ userId: data.userId, email: data.email, plan: data.plan });
+      setStep("otp");
     } catch {
       setError("Couldn't reach the server — try again in a moment.");
     } finally {
@@ -790,54 +942,87 @@ function AuthModal({ onAuthenticated, onGuest }) {
     }
   };
 
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-card">
-        <div className="modal-title" style={{ marginBottom: 16 }}>
-          <Zap size={16} /> {mode === "login" ? "Log in" : "Create your account"}
+  const verifyOtp = async () => {
+    setError("");
+    if (!code) {
+      setError("Enter the code sent to your email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Invalid code.");
+        return;
+      }
+      saveStoredAuth({ token: data.token, userId: data.userId, email: data.email });
+      onAuthenticated({
+        userId: data.userId,
+        email: data.email,
+        plan: data.plan,
+        profile: data.profile,
+      });
+    } catch {
+      setError("Couldn't reach the server — try again in a moment.");
+    } finally {
+      setLoading(false);
+    }
+  };
+return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="modal-title">
+            <Zap size={16} /> {step === "email" ? "Sign in" : "Enter code"}
+          </div>
+          <button className="modal-close" onClick={onClose}>
+            <X size={16} />
+          </button>
         </div>
 
-        <input
-          className="auth-input"
-          type="email"
-          autoComplete="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <input
-          className="auth-input"
-          type="password"
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-        />
-
-        {error && <div className="rzp-error">{error}</div>}
-
-        <button className="rzp-btn" onClick={submit} disabled={loading}>
-          {loading ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
-        </button>
-
-        <div className="auth-switch">
-          {mode === "login" ? (
-            <>
-              Don't have an account?{" "}
-              <span onClick={() => setMode("signup")}>Sign up</span>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <span onClick={() => setMode("login")}>Log in</span>
-            </>
-          )}
-        </div>
-
-        <div className="auth-guest" onClick={onGuest}>
-          Continue as guest
-        </div>
+        {step === "email" ? (
+          <>
+            <input
+              className="auth-input"
+              type="email"
+              autoComplete="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && requestOtp()}
+            />
+            {error && <div className="rzp-error">{error}</div>}
+            <button className="rzp-btn" onClick={requestOtp} disabled={loading}>
+              {loading ? "Sending…" : "Send code"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="otp-hint">Code sent to {email}</div>
+            <input
+              className="auth-input"
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="6-digit code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
+            />
+            {error && <div className="rzp-error">{error}</div>}
+            <button className="rzp-btn" onClick={verifyOtp} disabled={loading}>
+              {loading ? "Verifying…" : "Verify & continue"}
+            </button>
+            <div className="auth-switch">
+              <span onClick={() => setStep("email")}>Use a different email</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -860,9 +1045,11 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
   const [rzpLoading, setRzpLoading] = useState(false);
   const [rzpError, setRzpError] = useState("");
 
+  // Real crypto order state — created on the backend so the exact amount
+  // is unique to this order and can be auto-matched on-chain.
   const [cryptoOrder, setCryptoOrder] = useState(null);
   const [cryptoError, setCryptoError] = useState("");
-  const [cryptoStatus, setCryptoStatus] = useState("pending");
+  const [cryptoStatus, setCryptoStatus] = useState("pending"); // pending | paid | expired
 
   useEffect(() => {
     if (tab !== "crypto" || cryptoOrder) return;
@@ -887,6 +1074,7 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
     };
   }, [tab, cryptoOrder, sessionId, plan.name]);
 
+  // Poll for automatic on-chain confirmation — no admin action needed.
   useEffect(() => {
     if (!cryptoOrder || cryptoStatus !== "pending") return;
     const id = setInterval(async () => {
@@ -903,6 +1091,7 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
           setCryptoStatus("expired");
         }
       } catch {
+        // ignore transient poll failures
       }
     }, 5000);
     return () => clearInterval(id);
@@ -913,7 +1102,6 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
         cryptoOrder.walletAddress
       )}`
     : null;
-
   const handleCopy = (text) => {
     navigator.clipboard?.writeText(text).catch(() => {});
     setCopied(true);
@@ -1015,8 +1203,7 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
             )}
           </span>
         </div>
-
-        {tab === "crypto" ? (
+      {tab === "crypto" ? (
           <>
             {cryptoError && <div className="rzp-error">{cryptoError}</div>}
 
@@ -1110,6 +1297,7 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
   );
 }
 
+// ---------------------------------------------------------------------------
 export default function CandleVolt() {
   const [market, setMarket] = useState("crypto");
   const [view, setView] = useState("dashboard");
@@ -1129,6 +1317,9 @@ export default function CandleVolt() {
   const [now, setNow] = useState(Date.now());
   const [connected, setConnected] = useState(true);
 
+  // ---- Auth state ----
+  // Defaults silently to a guest session on load — never a blocking popup.
+  // Sign-in is opt-in via the profile button in the header / Account view.
   const [auth, setAuth] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -1140,8 +1331,9 @@ export default function CandleVolt() {
     (async () => {
       const stored = loadStoredAuth();
       if (!stored) {
+        if (!guestIdRef.current) guestIdRef.current = makeSessionId();
+        setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
         setAuthChecked(true);
-        setShowAuthModal(true);
         return;
       }
       try {
@@ -1150,31 +1342,37 @@ export default function CandleVolt() {
         });
         if (!res.ok) throw new Error("session invalid");
         const data = await res.json();
-        setAuth({ userId: data.userId, email: data.email, plan: data.plan, guest: false });
+        setAuth({
+          userId: data.userId,
+          email: data.email,
+          plan: data.plan,
+          profile: data.profile || {},
+          guest: false,
+        });
       } catch {
         clearStoredAuth();
-        setShowAuthModal(true);
+        if (!guestIdRef.current) guestIdRef.current = makeSessionId();
+        setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
       } finally {
         setAuthChecked(true);
       }
     })();
   }, []);
 
-  const handleAuthenticated = ({ userId, email, plan }) => {
-    setAuth({ userId, email, plan, guest: false });
+  const handleAuthenticated = ({ userId, email, plan, profile }) => {
+    setAuth({ userId, email, plan, profile: profile || {}, guest: false });
     setShowAuthModal(false);
   };
 
-  const handleGuest = () => {
-    if (!guestIdRef.current) guestIdRef.current = makeSessionId();
-    setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true });
-    setShowAuthModal(false);
+  const handleProfileSaved = (profile) => {
+    setAuth((prev) => (prev ? { ...prev, profile } : prev));
   };
 
   const handleLogout = () => {
     clearStoredAuth();
-    setAuth(null);
-    setShowAuthModal(true);
+    guestIdRef.current = makeSessionId();
+    setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
+    setView("dashboard");
   };
 
   const allAssets = Object.values(ASSETS).flat();
@@ -1183,7 +1381,8 @@ export default function CandleVolt() {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-
+  // Poll the real backend for prices — falls back to holding the last known
+  // value (and flags "offline") if the backend isn't reachable yet.
   const pollPrices = useCallback(async () => {
     try {
       const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
@@ -1213,6 +1412,8 @@ export default function CandleVolt() {
     }
   }, []);
 
+  // Poll real signals for the active market — free-plan delay is enforced
+  // server-side, so whatever we get back here is already correctly gated.
   const pollSignals = useCallback(async () => {
     if (!effectiveUserId) return;
     try {
@@ -1224,6 +1425,7 @@ export default function CandleVolt() {
       setSignals(Array.isArray(data?.signals) ? data.signals : []);
     } catch (e) {
       console.warn("[CandleVolt] signal poll failed:", e?.message);
+      // keep whatever signals we already have rather than clearing them
     }
   }, [market, effectiveUserId]);
 
@@ -1281,13 +1483,12 @@ export default function CandleVolt() {
       ],
     },
   ];
-
   return (
     <div className="app-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
-        * { box-sizing: border-box; 
+        * { box-sizing: border-box; }
         .app-root {
           background: radial-gradient(ellipse 1200px 600px at 50% -10%, #161B26 0%, #0A0D12 55%);
           min-height: 100vh;
@@ -1378,7 +1579,7 @@ export default function CandleVolt() {
         }
         .side-menu-open { transform: translateX(0); }
         .side-menu-head {
-        display: flex; align-items: center; gap: 10px;
+          display: flex; align-items: center; gap: 10px;
           font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px;
           padding: 4px 10px 18px;
         }
@@ -1390,7 +1591,8 @@ export default function CandleVolt() {
           cursor: pointer; text-align: left;
         }
         .side-menu-item:hover { background: #171D2A; }
-        .side-menu-item.active { background: linear-gradient(135deg, #1E2740, #171D2A); color: #E3A64B; font-weight: 600; box-shadow: inset 0 1px 0 rgba(227,166,75,0.1); }
+        .side-menu-item.active { background: linear-gradient(135deg, #1E2740, #171D2A); color:
+        #E3A64B; font-weight: 600; box-shadow: inset 0 1px 0 rgba(227,166,75,0.1); }
         .coming-soon { text-align: center; padding: 26px 14px; }
         .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
         .analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
@@ -1417,6 +1619,22 @@ export default function CandleVolt() {
         .auth-badge { display: flex; align-items: center; gap: 8px; font-size: 11px; }
         .auth-badge-label { color: #9AA3B5; font-family: 'IBM Plex Mono', monospace; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .auth-badge-btn { background: #1A2030; border: 1px solid #232A3B; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+        .profile-btn {
+          width: 32px; height: 32px; border-radius: 50%; border: 1px solid #232A3B;
+          background: #12161F; color: #9AA3B5; display: flex; align-items: center;
+          justify-content: center; cursor: pointer; overflow: hidden; padding: 0;
+        }
+        .profile-btn-avatar { width: 100%; height: 100%; object-fit: cover; }
+        .profile-avatar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .profile-avatar {
+          width: 56px; height: 56px; border-radius: 50%; background: #0D1017;
+          border: 1px solid #232A3B; display: flex; align-items: center; justify-content: center;
+          color: #5C6478; cursor: pointer; overflow: hidden; flex-shrink: 0;
+        }
+        .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .profile-bio { resize: none; font-family: 'Inter', sans-serif; }
+        .profile-save-msg { font-size: 11.5px; color: #9AA3B5; margin-top: 8px; }
+        .otp-hint { font-size: 12px; color: #9AA3B5; margin-bottom: 10px; }
         .auth-input {
           width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 8px;
           border: 1px solid #232A3B; background: #0D1017; color: #EDEFF3;
@@ -1435,8 +1653,7 @@ export default function CandleVolt() {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.35; }
         }
-
-        .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+                .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
 
         .offline-banner {
           display: flex; align-items: center; gap: 8px;
@@ -1463,7 +1680,6 @@ export default function CandleVolt() {
           color: #E3A64B;
           border-color: #3A2E1C;
           box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(227,166,75,0.1);
-        }
         }
 
         .layout {
@@ -1523,7 +1739,6 @@ export default function CandleVolt() {
         }
         .candle-chart-box { width: 100%; border-radius: 6px; overflow: hidden; }
         .chart-note { font-size: 10.5px; color: #5C6478; margin-top: 8px; line-height: 1.5; }
-
         .sig-feed { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; }
         .sig-card {
           border-radius: 10px;
@@ -1585,7 +1800,7 @@ export default function CandleVolt() {
         .stat-box {
           flex: 1; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; padding: 12px;
         }
-        .stat-label { font-size: 10.5px; color: #5C6478; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+                .stat-label { font-size: 10.5px; color: #5C6478; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
         .stat-val { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: #EDEFF3; }
         .stat-val.gold { color: #E3A64B; }
 
@@ -1683,8 +1898,7 @@ export default function CandleVolt() {
         .waiting-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #9AA3B5; margin-bottom: 10px; }
         .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A64B; animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0; }
       `}</style>
-
-      <Ticker tickerData={tickerData} />
+          <Ticker tickerData={tickerData} />
 
       <div className="header">
         <div className="brand">
@@ -1711,23 +1925,13 @@ export default function CandleVolt() {
             )}
           </div>
           {authChecked && auth && (
-            <div className="auth-badge">
-              {auth.guest ? (
-                <>
-                  <span className="auth-badge-label">Guest</span>
-                  <button className="auth-badge-btn" onClick={() => setShowAuthModal(true)}>
-                    Sign in
-                  </button>
-                </>
+            <button className="profile-btn" onClick={() => setView("account")} aria-label="Profile">
+              {auth.profile?.avatar ? (
+                <img src={auth.profile.avatar} className="profile-btn-avatar" alt="" />
               ) : (
-                <>
-                  <span className="auth-badge-label">{auth.email}</span>
-                  <button className="auth-badge-btn" onClick={handleLogout}>
-                    Log out
-                  </button>
-                </>
+                <UserCircle size={20} />
               )}
-            </div>
+            </button>
           )}
         </div>
       </div>
@@ -1784,7 +1988,6 @@ export default function CandleVolt() {
                 </div>
               );
             })}
-
             <div className="chart-hero">
               <div className="chart-hero-head">
                 <span className="chart-hero-sym">{selected}</span>
@@ -1857,13 +2060,13 @@ export default function CandleVolt() {
             auth={auth}
             onLogout={handleLogout}
             onShowAuth={() => setShowAuthModal(true)}
+            onProfileSaved={handleProfileSaved}
             plans={plans}
             currentPlan={currentPlan}
             onSubscribe={(p) => setPayingPlan(p)}
           />
         )}
       </div>
-
       {payingPlan && (
         <PaymentModal
           plan={payingPlan}
@@ -1877,7 +2080,7 @@ export default function CandleVolt() {
       )}
 
       {showAuthModal && (
-        <AuthModal onAuthenticated={handleAuthenticated} onGuest={handleGuest} />
+        <AuthModal onAuthenticated={handleAuthenticated} onClose={() => setShowAuthModal(false)} />
       )}
 
       <SideMenu
@@ -1888,4 +2091,4 @@ export default function CandleVolt() {
       />
     </div>
   );
-          }
+}
