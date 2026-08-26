@@ -650,11 +650,11 @@ function fmtEventTime(dateStr) {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleString(undefined, {
-    weekday: &quot;short&quot;,
-    month: &quot;short&quot;,
-    day: &quot;numeric&quot;,
-    hour: &quot;2-digit&quot;,
-    minute: &quot;2-digit&quot;,
+weekday: "short",
+month: "short",
+day: "numeric",
+hour: "2-digit",
+minute: "2-digit",
   });
 }
 
