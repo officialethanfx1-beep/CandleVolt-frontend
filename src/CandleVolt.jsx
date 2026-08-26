@@ -27,20 +27,6 @@ import {
   BarChart3,
 } from "lucide-react";
 
-// ---------------------------------------------------------------------------
-// Design tokens
-// bg-void:   #0A0D12   deep charcoal-navy, not pure black
-// bg-panel:  #12161F   card surface
-// bg-raised: #1A2030   raised surface / hover
-// line:      #232A3B   hairline borders
-// gold:      #E3A64B   bullish / buy / primary accent
-// rose:      #E2555A   bearish / sell
-// text-hi:   #EDEFF3
-// text-mid:  #9AA3B5
-// text-lo:   #5C6478
-// ---------------------------------------------------------------------------
-
-// >>> Point this at your deployed backend (see candlevolt-backend/README.md).
 const BACKEND_URL = "https://candlevolt-backend-qsyr.onrender.com";
 
 const ASSETS = {
@@ -107,12 +93,10 @@ function fmtCountdown(ms) {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-// simple per-session id
 function makeSessionId() {
   return `sess-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 }
 
-// Real localStorage is fine here — this is a real deployed website.
 const LS_TOKEN = "candlevolt_token";
 const LS_USERID = "candlevolt_userid";
 const LS_EMAIL = "candlevolt_email";
@@ -124,7 +108,6 @@ function loadStoredAuth() {
     const email = localStorage.getItem(LS_EMAIL);
     if (token && userId) return { token, userId, email };
   } catch {
-    // storage may be unavailable
   }
   return null;
 }
@@ -135,7 +118,6 @@ function saveStoredAuth({ token, userId, email }) {
     localStorage.setItem(LS_USERID, userId);
     if (email) localStorage.setItem(LS_EMAIL, email);
   } catch {
-    // ignore
   }
 }
 
@@ -145,25 +127,18 @@ function clearStoredAuth() {
     localStorage.removeItem(LS_USERID);
     localStorage.removeItem(LS_EMAIL);
   } catch {
-    // ignore
   }
 }
 
-// Manual timeout wrapper
 function fetchWithTimeout(url, ms = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
-  return fetch(url, { signal: controller.signal }).finally(() =>
-    clearTimeout(id)
-  );
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
 }
-
-// ---------------------------------------------------------------------------
 
 function Sparkline({ data, positive }) {
   const points = data.map((v, i) => ({ i, v }));
   const color = positive ? "#E3A64B" : "#E2555A";
-
   return (
     <ResponsiveContainer width="100%" height={40}>
       <LineChart data={points}>
@@ -181,7 +156,6 @@ function Sparkline({ data, positive }) {
   );
 }
 
-// Real OHLC candlestick chart
 function CandlestickChart({ symbol, interval, height = 220 }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -189,7 +163,6 @@ function CandlestickChart({ symbol, interval, height = 220 }) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-
     let raf = requestAnimationFrame(() => {
       if (!containerRef.current) return;
 
@@ -197,10 +170,7 @@ function CandlestickChart({ symbol, interval, height = 220 }) {
         width: containerRef.current.clientWidth,
         height,
         layout: {
-          background: {
-            type: ColorType.Solid,
-            color: "#0D1017",
-          },
+          background: { type: ColorType.Solid, color: "#0D1017" },
           textColor: "#9AA3B5",
           fontFamily: "IBM Plex Mono, monospace",
         },
@@ -208,21 +178,14 @@ function CandlestickChart({ symbol, interval, height = 220 }) {
           vertLines: { color: "#1B2130" },
           horzLines: { color: "#1B2130" },
         },
-        timeScale: {
-          borderColor: "#232A3B",
-          timeVisible: true,
-        },
-        rightPriceScale: {
-          borderColor: "#232A3B",
-        },
-        crosshair: {
-          mode: 0,
-        },
+        timeScale: { borderColor: "#232A3B", timeVisible: true },
+        rightPriceScale: { borderColor: "#232A3B" },
+        crosshair: { mode: 0 },
       });
 
       const series = chart.addCandlestickSeries({
         upColor: "#E3A64B",
-                downColor: "#E2555A",
+        downColor: "#E2555A",
         borderVisible: false,
         wickUpColor: "#E3A64B",
         wickDownColor: "#E2555A",
@@ -235,12 +198,9 @@ function CandlestickChart({ symbol, interval, height = 220 }) {
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: Math.floor(entry.contentRect.width),
-        });
+        chartRef.current.applyOptions({ width: Math.floor(entry.contentRect.width) });
       }
     });
-
     ro.observe(containerRef.current);
 
     return () => {
@@ -258,17 +218,11 @@ function CandlestickChart({ symbol, interval, height = 220 }) {
     const poll = async () => {
       try {
         const res = await fetchWithTimeout(
-          `${BACKEND_URL}/api/candles?symbol=${encodeURIComponent(
-            symbol
-          )}&interval=${interval}&limit=200`
+          `${BACKEND_URL}/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=200`
         );
-
         if (!res.ok) return;
-
         const data = await res.json();
-
         if (cancelled || !seriesRef.current) return;
-
         const candles = (data.candles || []).map((c) => ({
           time: c.t,
           open: c.o,
@@ -276,38 +230,23 @@ function CandlestickChart({ symbol, interval, height = 220 }) {
           low: c.l,
           close: c.c,
         }));
-
-        if (candles.length) {
-          seriesRef.current.setData(candles);
-        }
+        if (candles.length) seriesRef.current.setData(candles);
       } catch {
-        // keep showing the last known candles
       }
     };
 
     poll();
-
     const id = setInterval(poll, 8000);
-
     return () => {
       cancelled = true;
       clearInterval(id);
-    };
+      };
   }, [symbol, interval]);
 
   return <div ref={containerRef} className="candle-chart-box" />;
 }
 
-const TIMEFRAMES = [
-  "1m",
-  "5m",
-  "15m",
-  "1h",
-  "4h",
-  "1D",
-  "1w",
-  "1M",
-];
+const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1D", "1w", "1M"];
 
 function TimeframeBar({ value, onChange }) {
   return (
@@ -327,61 +266,33 @@ function TimeframeBar({ value, onChange }) {
 
 function timeAgoShort(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
-
   if (s < 60) return "just now";
-
   const m = Math.floor(s / 60);
-
   if (m < 60) return `${m}m ago`;
-
   const h = Math.floor(m / 60);
-
   if (h < 24) return `${h}h ago`;
-
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// ---------------------------------------------------------------------------
-// Live news
-// ---------------------------------------------------------------------------
-
 function NewsPanel({ market }) {
   const [items, setItems] = useState([]);
-
-  const category =
-    market === "forex" || market === "commodities"
-      ? "forex"
-      : "crypto";
+  const category = market === "forex" || market === "commodities" ? "forex" : "crypto";
 
   useEffect(() => {
     let cancelled = false;
-
     const poll = async () => {
       try {
         const res = await fetchWithTimeout(
           `${BACKEND_URL}/api/news?category=${category}&limit=12`
         );
-
         if (!res.ok) return;
-
         const data = await res.json();
-
-        if (!cancelled) {
-          setItems(
-            Array.isArray(data?.news)
-              ? data.news
-              : []
-          );
-        }
+        if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
       } catch {
-        // keep whatever headlines we already have
       }
     };
-
     poll();
-
     const id = setInterval(poll, 60000);
-
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -391,28 +302,13 @@ function NewsPanel({ market }) {
   return (
     <div className="panel">
       <div className="panel-title">
-        <Radio
-          size={12}
-          style={{
-            display: "inline",
-            marginRight: 6,
-            verticalAlign: -2,
-          }}
-        />
-
-        Market News —{" "}
-        {category === "forex"
-          ? "Forex & Commodities"
-          : "Crypto"}
+        <Radio size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Market News — {category === "forex" ? "Forex & Commodities" : "Crypto"}
       </div>
-
       <div className="news-feed">
         {items.length === 0 && (
-          <div className="empty-state">
-            Fetching the latest headlines…
-          </div>
+          <div className="empty-state">Fetching the latest headlines…</div>
         )}
-
         {items.map((n) => (
           <a
             key={n.id}
@@ -421,18 +317,10 @@ function NewsPanel({ market }) {
             rel="noopener noreferrer"
             className="news-item"
           >
-            <div className="news-title">
-              {n.title}
-            </div>
-
+            <div className="news-title">{n.title}</div>
             <div className="news-meta">
-              <span className="news-source">
-                {n.source}
-              </span>
-
-              <span className="news-time">
-                {timeAgoShort(n.publishedAt)}
-              </span>
+              <span className="news-source">{n.source}</span>
+              <span className="news-time">{timeAgoShort(n.publishedAt)}</span>
             </div>
           </a>
         ))}
@@ -443,41 +331,17 @@ function NewsPanel({ market }) {
 
 function Ticker({ tickerData }) {
   const row = [...tickerData, ...tickerData];
-
   return (
     <div className="ticker-wrap">
       <div className="ticker-track">
         {row.map((t, idx) => (
-          <span
-            key={idx}
-            className="ticker-item"
-          >
-            <span className="ticker-sym">
-              {t.symbol}
-            </span>
-
-            <span
-              className={
-                t.up
-                  ? "ticker-up"
-                  : "ticker-down"
-              }
-            >
+          <span key={idx} className="ticker-item">
+            <span className="ticker-sym">{t.symbol}</span>
+            <span className={t.up ? "ticker-up" : "ticker-down"}>
               {fmtPrice(t.price, t.symbol)}
             </span>
-
-            <span
-              className={
-                t.up
-                  ? "ticker-up"
-                  : "ticker-down"
-              }
-            >
-              {t.price == null
-                ? ""
-                : `${t.up ? "▲" : "▼"} ${Math.abs(
-                    t.pct
-                  ).toFixed(2)}%`}
+            <span className={t.up ? "ticker-up" : "ticker-down"}>
+              {t.price == null ? "" : `${t.up ? "▲" : "▼"} ${Math.abs(t.pct).toFixed(2)}%`}
             </span>
           </span>
         ))}
@@ -486,243 +350,115 @@ function Ticker({ tickerData }) {
   );
 }
 
-function SignalCard({
-  sig,
-  locked,
-  remainingMs,
-}) {
+function SignalCard({ sig, locked, remainingMs }) {
   const isBuy = sig.direction === "BUY";
 
   if (locked) {
     return (
-      <div
-        className={`sig-card sig-locked ${
-          isBuy ? "sig-buy" : "sig-sell"
-        }`}
-      >
+      <div className={`sig-card sig-locked ${isBuy ? "sig-buy" : "sig-sell"}`}>
         <div className="sig-top">
           <div className="sig-dir">
             {isBuy ? (
-              <TrendingUp
-                size={15}
-                strokeWidth={2.4}
-              />
+              <TrendingUp size={15} strokeWidth={2.4} />
             ) : (
-              <TrendingDown
-                size={15}
-                strokeWidth={2.4}
-              />
+              <TrendingDown size={15} strokeWidth={2.4} />
             )}
-
             <span>{sig.direction}</span>
           </div>
-
-          <span className="sig-market">
-            {sig.marketKey?.toUpperCase()}
-          </span>
+          <span className="sig-market">{sig.marketKey?.toUpperCase()}</span>
         </div>
-
-        <div className="sig-symbol blurred">
-          {sig.symbol}
-        </div>
-
+        <div className="sig-symbol blurred">{sig.symbol}</div>
         <div className="lock-overlay">
           <Lock size={14} />
-
-          <span>
-            Unlocks in {fmtCountdown(remainingMs)}
-          </span>
-
-          <span className="lock-sub">
-            Upgrade to Pro for real-time signals
-          </span>
+          <span>Unlocks in {fmtCountdown(remainingMs)}</span>
+          <span className="lock-sub">Upgrade to Pro for real-time signals</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className={`sig-card ${
-        isBuy ? "sig-buy" : "sig-sell"
-      }`}
-    >
+    <div className={`sig-card ${isBuy ? "sig-buy" : "sig-sell"}`}>
       <div className="sig-top">
         <div className="sig-dir">
           {isBuy ? (
-            <TrendingUp
-              size={15}
-              strokeWidth={2.4}
-            />
+            <TrendingUp size={15} strokeWidth={2.4} />
           ) : (
-            <TrendingDown
-              size={15}
-              strokeWidth={2.4}
-            />
+            <TrendingDown size={15} strokeWidth={2.4} />
           )}
-
           <span>{sig.direction}</span>
         </div>
-
-        <span className="sig-market">
-          {sig.marketKey?.toUpperCase()}
-        </span>
+        <span className="sig-market">{sig.marketKey?.toUpperCase()}</span>
       </div>
-
-      <div className="sig-symbol">
-        {sig.symbol}
-      </div>
-
+      <div className="sig-symbol">{sig.symbol}</div>
       <div className="sig-grid">
         <div>
-          <div className="sig-label">
-            Entry
-          </div>
-
-          <div className="sig-val">
-            {fmtPrice(
-              sig.entry,
-              sig.symbol
-            )}
-          </div>
+          <div className="sig-label">Entry</div>
+          <div className="sig-val">{fmtPrice(sig.entry, sig.symbol)}</div>
         </div>
-
         <div>
-          <div className="sig-label">
-            Target
-          </div>
-
+          <div className="sig-label">Target</div>
           <div className="sig-val sig-val-up">
-            {fmtPrice(
-              sig.target,
-              sig.symbol
-            )}
+            {fmtPrice(sig.target, sig.symbol)}
           </div>
         </div>
-
         <div>
-          <div className="sig-label">
-            Stop
-          </div>
-
+          <div className="sig-label">Stop</div>
           <div className="sig-val sig-val-down">
-            {fmtPrice(
-              sig.stop,
-              sig.symbol
-            )}
+            {fmtPrice(sig.stop, sig.symbol)}
           </div>
         </div>
       </div>
-
       <div className="sig-conf-row">
         <div className="sig-conf-track">
           <div
             className="sig-conf-fill"
             style={{
               width: `${sig.confidence}%`,
-              background: isBuy
-                ? "#E3A64B"
-                : "#E2555A",
+              background: isBuy ? "#E3A64B" : "#E2555A",
             }}
           />
         </div>
-
-        <span className="sig-conf-num">
-          {sig.confidence}%
-        </span>
+        <span className="sig-conf-num">{sig.confidence}%</span>
       </div>
-
       <div className="sig-foot">
         <span>{sig.reason}</span>
-
-        <span className="sig-time">
-          {timeAgo(sig.ts)}
-        </span>
+        <span className="sig-time">{timeAgo(sig.ts)}</span>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Navigation
-// ---------------------------------------------------------------------------
-
 const NAV_ITEMS = [
-  {
-    key: "dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    key: "chart",
-    label: "Chart",
-    icon: BarChart3,
-  },
-  {
-    key: "news",
-    label: "News",
-    icon: Newspaper,
-  },
-  {
-    key: "calendar",
-    label: "Market Calendar",
-    icon: CalendarClock,
-  },
-  {
-    key: "analysis",
-    label: "Daily Analysis",
-    icon: Sparkles,
-  },
-  {
-    key: "account",
-    label: "Account",
-    icon: UserCircle,
-  },
+  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { key: "chart", label: "Chart", icon: BarChart3 },
+  { key: "news", label: "News", icon: Newspaper },
+  { key: "calendar", label: "Market Calendar", icon: CalendarClock },
+  { key: "analysis", label: "Daily Analysis", icon: Sparkles },
+  { key: "account", label: "Account", icon: UserCircle },
 ];
 
-function SideMenu({
-  open,
-  activeView,
-  onSelect,
-  onClose,
-}) {
+function SideMenu({ open, activeView, onSelect, onClose }) {
   return (
     <>
       <div
-        className={`menu-scrim ${
-          open ? "menu-scrim-open" : ""
-        }`}
+        className={`menu-scrim ${open ? "menu-scrim-open" : ""}`}
         onClick={onClose}
       />
-
-      <div
-        className={`side-menu ${
-          open ? "side-menu-open" : ""
-        }`}
-      >
+      <div className={`side-menu ${open ? "side-menu-open" : ""}`}>
         <div className="side-menu-head">
           <div className="brand-mark">
-            <Zap
-              size={16}
-              strokeWidth={2.6}
-            />
+            <Zap size={16} strokeWidth={2.6} />
           </div>
-
           CandleVolt
         </div>
-
         <div className="side-menu-items">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-
             return (
               <button
                 key={item.key}
-                className={`side-menu-item ${
-                  activeView === item.key
-                    ? "active"
-                    : ""
-                }`}
+                className={`side-menu-item ${activeView === item.key ? "active" : ""}`}
                 onClick={() => {
                   onSelect(item.key);
                   onClose();
@@ -738,170 +474,205 @@ function SideMenu({
     </>
   );
 }
+
+function ChartView() {
+  const chartAssets = [...ASSETS.crypto, ...ASSETS.meme];
+  const [symbol, setSymbol] = useState(chartAssets[0].symbol);
+  const [interval, setIntervalTf] = useState("1m");
+  const [price, setPrice] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices?market=crypto`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const all = [...(data.crypto || []), ...(data.meme || [])];
+        const found = all.find((a) => a.symbol === symbol);
+        if (!cancelled && found) setPrice(found.price);
+      } catch {
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [symbol]);
+
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        <BarChart3 size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Chart
+        </div>
+
+      <div className="chart-symbol-picker">
+        {chartAssets.map((a) => (
+          <button
+            key={a.symbol}
+            className={`tab-btn ${symbol === a.symbol ? "active" : ""}`}
+            onClick={() => setSymbol(a.symbol)}
+          >
+            {a.symbol}
+          </button>
+        ))}
+      </div>
+
+      <div className="chart-page-head">
+        <span className="chart-hero-sym">{symbol}</span>
+        <span className="chart-hero-price">{fmtPrice(price, symbol)}</span>
+      </div>
+
+      <TimeframeBar value={interval} onChange={setIntervalTf} />
+
+      <CandlestickChart symbol={symbol} interval={interval} height={380} />
+    </div>
+  );
+}
+
+function NewsView() {
+  const [category, setCategory] = useState("crypto");
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetchWithTimeout(
+          `${BACKEND_URL}/api/news?category=${category}&limit=30`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setItems(Array.isArray(data?.news) ? data.news : []);
+      } catch {
+      }
+    };
+    poll();
+    const id = setInterval(poll, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [category]);
+
+  return (
+    <div className="panel">
+      <div className="market-tabs" style={{ marginBottom: 14 }}>
+        <button
+          className={`tab-btn ${category === "crypto" ? "active" : ""}`}
+          onClick={() => setCategory("crypto")}
+        >
+          Crypto
+        </button>
+        <button
+          className={`tab-btn ${category === "forex" ? "active" : ""}`}
+          onClick={() => setCategory("forex")}
+        >
+          Forex & Commodities
+        </button>
+      </div>
+      <div className="news-feed" style={{ maxHeight: "none" }}>
+        {items.length === 0 && (
+          <div className="empty-state">Fetching the latest headlines…</div>
+        )}
+        {items.map((n) => (
+          <a key={n.id} href={n.link} target="_blank" rel="noopener noreferrer" className="news-item">
+            <div className="news-title">{n.title}</div>
+            <div className="news-meta">
+              <span className="news-source">{n.source}</span>
+              <span className="news-time">{timeAgoShort(n.publishedAt)}</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function fmtEventTime(dateStr) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function CalendarView() {
   const [events, setEvents] = useState([]);
   const [impact, setImpact] = useState("all");
 
   useEffect(() => {
     let cancelled = false;
-
     const poll = async () => {
       try {
-        const res = await fetchWithTimeout(
-          `${BACKEND_URL}/api/calendar?limit=50`
-        );
-
+        const url =
+          impact === "all"
+            ? `${BACKEND_URL}/api/calendar`
+            : `${BACKEND_URL}/api/calendar?impact=${impact}`;
+        const res = await fetchWithTimeout(url);
         if (!res.ok) return;
-
         const data = await res.json();
-
-        if (!cancelled) {
-          setEvents(
-            Array.isArray(data?.events)
-              ? data.events
-              : []
-          );
-        }
+        if (!cancelled) setEvents(Array.isArray(data?.events) ? data.events : []);
       } catch {
-        // keep existing events
       }
     };
-
     poll();
-
-    const id = setInterval(poll, 300000);
-
+    const id = setInterval(poll, 5 * 60000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
-
-  const filtered =
-    impact === "all"
-      ? events
-      : events.filter(
-          (e) =>
-            String(e.impact || "").toLowerCase() ===
-            impact
-        );
+  }, [impact]);
 
   return (
-    <div className="view-wrap">
-      <div className="view-head">
-        <div>
-          <div className="eyebrow">
-            ECONOMIC EVENTS
-          </div>
-
-          <h2>Market Calendar</h2>
-
-          <p className="view-sub">
-            Upcoming macro events that may move
-            global markets.
-          </p>
-        </div>
-
-        <div className="impact-tabs">
-          {["all", "high", "medium", "low"].map(
-            (level) => (
-              <button
-                key={level}
-                className={`impact-btn ${
-                  impact === level ? "active" : ""
-                }`}
-                onClick={() => setImpact(level)}
-              >
-                {level}
-              </button>
-            )
-          )}
-        </div>
+    <div className="panel">
+      <div className="panel-title">
+        <CalendarClock size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Market Calendar
       </div>
-
-      <div className="panel calendar-panel">
-        <div className="calendar-head">
-          <span>EVENT</span>
-          <span>TIME</span>
-          <span>IMPACT</span>
-          <span>FORECAST</span>
-          <span>PREVIOUS</span>
-          <span>ACTUAL</span>
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="empty-state calendar-empty">
-            No calendar events available.
-          </div>
+      <div className="market-tabs" style={{ marginBottom: 14 }}>
+        {["all", "High", "Medium", "Low"].map((lvl) => (
+          <button
+            key={lvl}
+            className={`tab-btn ${impact === lvl ? "active" : ""}`}
+            onClick={() => setImpact(lvl)}
+          >
+            {lvl === "all" ? "All" : lvl}
+          </button>
+        ))}
+      </div>
+      <div className="cal-feed">
+        {events.length === 0 && (
+          <div className="empty-state">Fetching this week's economic calendar…</div>
         )}
-
-        {filtered.map((event, index) => {
-          const level = String(
-            event.impact || "low"
-          ).toLowerCase();
-
-          return (
-            <div
-              className="calendar-row"
-              key={
-                event.id ||
-                `${event.title}-${event.time}-${index}`
-              }
-            >
-              <div className="calendar-event">
-                <div className="calendar-country">
-                  {event.country || "GLOBAL"}
-                </div>
-
-                <div className="calendar-title">
-                  {event.title || "Unnamed event"}
-                </div>
-              </div>
-
-              <div className="calendar-time">
-                {event.time
-                  ? new Date(event.time).toLocaleString(
-                      undefined,
-                      {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
-                    )
-                  : "—"}
-              </div>
-
-              <div>
-                <span
-                  className={`impact-pill impact-${level}`}
-                >
-                  {level}
-                </span>
-              </div>
-
-              <div className="calendar-value">
-                {event.forecast ?? "—"}
-              </div>
-
-              <div className="calendar-value">
-                {event.previous ?? "—"}
-              </div>
-
-              <div className="calendar-value actual">
-                {event.actual ?? "—"}
-              </div>
+        {events.map((e) => (
+          <div key={e.id} className={`cal-item cal-${(e.impact || "").toLowerCase()}`}>
+            <div className="cal-top">
+              <span className="cal-country">{e.country}</span>
+              <span className={`cal-impact cal-impact-${(e.impact || "").toLowerCase()}`}>
+                {e.impact}
+              </span>
             </div>
-          );
-        })}
+            <div className="cal-title">{e.title}</div>
+            <div className="cal-time">{fmtEventTime(e.date)}</div>
+            <div className="cal-figures">
+              <span>Forecast: {e.forecast || "—"}</span>
+              <span>Previous: {e.previous || "—"}</span>
+              <span>Actual: {e.actual || "—"}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Daily AI analysis
-// ---------------------------------------------------------------------------
 
 function AnalysisView() {
   const [analysis, setAnalysis] = useState(null);
@@ -909,33 +680,19 @@ function AnalysisView() {
 
   useEffect(() => {
     let cancelled = false;
-
     const poll = async () => {
       try {
-        const res = await fetchWithTimeout(
-          `${BACKEND_URL}/api/daily-analysis`
-        );
-
+        const res = await fetchWithTimeout(`${BACKEND_URL}/api/analysis`);
         if (!res.ok) return;
-
         const data = await res.json();
-
-        if (!cancelled) {
-          setAnalysis(data?.analysis || null);
-        }
+        if (!cancelled) setAnalysis(data);
       } catch {
-        // no analysis available
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
-
     poll();
-
-    const id = setInterval(poll, 300000);
-
+    const id = setInterval(poll, 5 * 60000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -943,1392 +700,822 @@ function AnalysisView() {
   }, []);
 
   return (
-    <div className="view-wrap">
-      <div className="view-head">
-        <div>
-          <div className="eyebrow">
-            MARKET INTELLIGENCE
-          </div>
-
-          <h2>Daily Analysis</h2>
-
-          <p className="view-sub">
-            AI-assisted market briefing generated
-            from current market conditions.
-          </p>
-        </div>
+    <div className="panel">
+      <div className="panel-title">
+        <Sparkles size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Daily Analysis
       </div>
 
-      <div className="analysis-grid">
-        {loading && (
-          <div className="panel analysis-loading">
-            <Sparkles size={18} />
-            Loading today's briefing…
-          </div>
-        )}
+      {loading && (
+        <div className="empty-state">Loading the latest briefing…</div>
+      )}
 
-        {!loading && !analysis && (
-          <div className="panel analysis-empty">
-            <Sparkles size={22} />
-
-            <div>
-              <div className="analysis-empty-title">
-                Daily analysis unavailable
-              </div>
-
-              <div className="analysis-empty-sub">
-                No live briefing was returned by the
-                backend.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!loading && analysis && (
-          <>
-            <div className="panel analysis-main">
-              <div className="analysis-label">
-                TODAY'S BRIEFING
-              </div>
-
-              <h3>
-                {analysis.title ||
-                  "Market Overview"}
-              </h3>
-
-              <div className="analysis-text">
-                {analysis.summary ||
-                  analysis.text ||
-                  ""}
-              </div>
-
-              {Array.isArray(
-                analysis.highlights
-              ) &&
-                analysis.highlights.length > 0 && (
-                  <div className="analysis-highlights">
-                    {analysis.highlights.map(
-                      (item, index) => (
-                        <div
-                          className="analysis-highlight"
-                          key={index}
-                        >
-                          <div className="analysis-dot">
-                            <Zap size={11} />
-                          </div>
-
-                          <span>{item}</span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-            </div>
-
-            <div className="panel analysis-side">
-              <div className="analysis-label">
-                MARKET BIAS
-              </div>
-
-              <div
-                className={`analysis-bias ${
-                  String(
-                    analysis.bias || ""
-                  ).toLowerCase()
-                }`}
-              >
-                {analysis.bias || "NEUTRAL"}
-              </div>
-
-              {analysis.risk && (
-                <>
-                  <div className="analysis-label">
-                    RISK
-                  </div>
-
-                  <div className="analysis-risk">
-                    {analysis.risk}
-                  </div>
-                </>
-              )}
-
-              {analysis.updatedAt && (
-                <div className="analysis-updated">
-                  Updated{" "}
-                  {new Date(
-                    analysis.updatedAt
-                  ).toLocaleString()}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="analysis-disclaimer">
-        AI-generated market analysis is for
-        informational purposes only and is not a
-        guaranteed prediction or financial advice.
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Chart view
-// ---------------------------------------------------------------------------
-
-function ChartView({
-  market,
-  selectedAsset,
-  onAssetChange,
-}) {
-  const [interval, setIntervalValue] =
-    useState("1h");
-
-  const assets =
-    ASSETS[market] || ASSETS.crypto;
-
-  const selected =
-    assets.find(
-      (a) => a.symbol === selectedAsset
-    ) || assets[0];
-
-  return (
-    <div className="view-wrap">
-      <div className="view-head chart-view-head">
-        <div>
-          <div className="eyebrow">
-            TECHNICAL CHART
-          </div>
-
-          <h2>{selected.symbol}</h2>
-
-          <p className="view-sub">
-            Live market structure and price action.
-          </p>
+      {!loading && !analysis?.text && (
+        <div className="coming-soon">
+          <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
+          <p>No briefing generated yet — check back shortly.</p>
         </div>
+      )}
 
-        <select
-          className="asset-select"
-          value={selected.symbol}
-          onChange={(e) =>
-            onAssetChange(e.target.value)
-          }
-        >
-          {assets.map((asset) => (
-            <option
-              key={asset.symbol}
-              value={asset.symbol}
-            >
-              {asset.symbol}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="panel chart-panel">
-        <div className="chart-toolbar">
-          <div className="chart-symbol">
-            <BarChart3 size={15} />
-
-            {selected.symbol}
+      {!loading && analysis?.text && (
+        <>
+          <div className="analysis-updated">
+            Last updated {timeAgoShort(analysis.generatedAt)}
           </div>
-
-          <TimeframeBar
-            value={interval}
-            onChange={setIntervalValue}
-          />
-        </div>
-
-        <CandlestickChart
-          symbol={selected.symbol}
-          interval={interval}
-          height={430}
-        />
-      </div>
-    </div>
-  );
-}
-function DashboardView({
-  market,
-  setMarket,
-  tickerData,
-  signals,
-  plan,
-  onUpgrade,
-}) {
-  const [selectedAsset, setSelectedAsset] =
-    useState(
-      ASSETS[market]?.[0]?.symbol || ""
-    );
-
-  const [selectedSignal, setSelectedSignal] =
-    useState(null);
-
-  const [remainingMs, setRemainingMs] =
-    useState(0);
-
-  useEffect(() => {
-    const first =
-      ASSETS[market]?.[0]?.symbol || "";
-
-    setSelectedAsset(first);
-  }, [market]);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!selectedSignal?.unlockAt) {
-        setRemainingMs(0);
-        return;
-      }
-
-      setRemainingMs(
-        Math.max(
-          0,
-          new Date(
-            selectedSignal.unlockAt
-          ).getTime() - Date.now()
-        )
-      );
-    }, 1000);
-
-    return () => clearInterval(id);
-  }, [selectedSignal]);
-
-  const marketSignals = signals.filter(
-    (s) =>
-      !s.marketKey ||
-      s.marketKey === market
-  );
-
-  const visibleSignals =
-    marketSignals.length > 0
-      ? marketSignals
-      : [];
-
-  return (
-    <div className="view-wrap dashboard-view">
-      <div className="dashboard-top">
-        <div>
-          <div className="eyebrow">
-            LIVE MARKET TERMINAL
+          <div className="analysis-text">{analysis.text}</div>
+          <div className="disclaimer">
+            <ShieldCheck size={16} />
+            <span>
+              AI-generated read on current conditions — not a guaranteed
+              prediction. Always do your own research before trading.
+            </span>
           </div>
-
-          <h2>Dashboard</h2>
-
-          <p className="view-sub">
-            Real-time prices, signals and market
-            intelligence.
-          </p>
-        </div>
-
-        <div className="market-tabs">
-          {Object.keys(MARKET_LABELS).map(
-            (key) => (
-              <button
-                key={key}
-                className={`market-tab ${
-                  market === key
-                    ? "active"
-                    : ""
-                }`}
-                onClick={() =>
-                  setMarket(key)
-                }
-              >
-                {MARKET_LABELS[key]}
-              </button>
-            )
-          )}
-        </div>
-      </div>
-
-      <Ticker tickerData={tickerData} />
-
-      <div className="dashboard-grid">
-        <div className="dashboard-main">
-          <div className="section-head">
-            <div>
-              <div className="section-kicker">
-                MARKET WATCH
-              </div>
-
-              <h3>
-                {MARKET_LABELS[market]}
-              </h3>
-            </div>
-
-            <div className="live-status">
-              <span className="live-dot" />
-              LIVE
-            </div>
-          </div>
-
-          <div className="asset-grid">
-            {(
-              ASSETS[market] || []
-            ).map((asset) => {
-              const ticker = tickerData.find(
-                (t) =>
-                  t.symbol === asset.symbol
-              );
-
-              const price =
-                ticker?.price ?? asset.base;
-
-              const pct =
-                ticker?.pct ?? 0;
-
-              const up =
-                ticker?.up ?? pct >= 0;
-
-              const selected =
-                selectedAsset ===
-                asset.symbol;
-
-              return (
-                <button
-                  key={asset.symbol}
-                  className={`asset-card ${
-                    selected
-                      ? "selected"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    setSelectedAsset(
-                      asset.symbol
-                    )
-                  }
-                >
-                  <div className="asset-card-top">
-                    <span className="asset-symbol">
-                      {asset.symbol}
-                    </span>
-
-                    <span
-                      className={
-                        up
-                          ? "pct-up"
-                          : "pct-down"
-                      }
-                    >
-                      {up ? "+" : ""}
-                      {pct.toFixed(2)}%
-                    </span>
-                  </div>
-
-                  <div className="asset-price">
-                    {fmtPrice(
-                      price,
-                      asset.symbol
-                    )}
-                  </div>
-
-                  <Sparkline
-                    data={
-                      ticker?.history ||
-                      seedSeries(
-                        asset.base
-                      )
-                    }
-                    positive={up}
-                  />
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="section-head signal-section-head">
-            <div>
-              <div className="section-kicker">
-                TRADE SIGNALS
-              </div>
-
-              <h3>
-                Latest Signals
-              </h3>
-            </div>
-
-            <div className="signal-count">
-              {visibleSignals.length} signals
-            </div>
-          </div>
-
-          <div className="signals-grid">
-            {visibleSignals.length === 0 && (
-              <div className="panel empty-signals">
-                <Radio size={18} />
-
-                <span>
-                  Waiting for live signals…
-                </span>
-              </div>
-            )}
-
-            {visibleSignals.map(
-              (sig, index) => {
-                const locked =
-                  plan === "free" &&
-                  index >= 3;
-
-                return (
-                  <div
-                    key={
-                      sig.id ||
-                      `${sig.symbol}-${sig.ts}-${index}`
-                    }
-                    onClick={() => {
-                      if (locked) {
-                        setSelectedSignal(
-                          sig
-                        );
-                      }
-                    }}
-                  >
-                    <SignalCard
-                      sig={sig}
-                      locked={locked}
-                      remainingMs={
-                        remainingMs
-                      }
-                    />
-                  </div>
-                );
-              }
-            )}
-          </div>
-        </div>
-
-        <aside className="dashboard-side">
-          <NewsPanel market={market} />
-
-          <div className="panel upgrade-panel">
-            <div className="upgrade-icon">
-              <Crown size={18} />
-            </div>
-
-            <div className="upgrade-title">
-              Unlock full signals
-            </div>
-
-            <div className="upgrade-text">
-              Get real-time signals, entry,
-              target, stop and higher confidence
-              scoring.
-            </div>
-
-            <button
-              className="gold-btn"
-              onClick={onUpgrade}
-            >
-              Upgrade Plan
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </aside>
-      </div>
-
-      {selectedSignal && (
-        <div
-          className="modal-backdrop"
-          onClick={() =>
-            setSelectedSignal(null)
-          }
-        >
-          <div
-            className="modal"
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-          >
-            <button
-              className="modal-close"
-              onClick={() =>
-                setSelectedSignal(null)
-              }
-            >
-              <X size={17} />
-            </button>
-
-            <div className="modal-icon">
-              <Lock size={18} />
-            </div>
-
-            <h3>
-              Signal locked
-            </h3>
-
-            <p>
-              Free accounts receive limited
-              delayed signals. Upgrade to
-              unlock real-time trade signals.
-            </p>
-
-            <button
-              className="gold-btn modal-action"
-              onClick={() => {
-                setSelectedSignal(null);
-                onUpgrade();
-              }}
-            >
-              View Plans
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Live market data hook
-// ---------------------------------------------------------------------------
-
-function useMarketData() {
-  const [marketData, setMarketData] =
-    useState({});
-
-  const [backendOnline, setBackendOnline] =
-    useState(false);
-
-  const [lastUpdate, setLastUpdate] =
-    useState(null);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetchWithTimeout(
-        `${BACKEND_URL}/api/markets`,
-        10000
-      );
-
-      if (!res.ok) {
-        throw new Error(
-          `HTTP ${res.status}`
-        );
-      }
-
-      const data = await res.json();
-
-      const incoming =
-        data?.markets ||
-        data?.data ||
-        data;
-
-      if (
-        incoming &&
-        typeof incoming === "object"
-      ) {
-        setMarketData(incoming);
-      }
-
-      setBackendOnline(true);
-      setLastUpdate(Date.now());
-    } catch {
-      setBackendOnline(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-
-    const id = setInterval(
-      load,
-      POLL_MS
-    );
-
-    return () => clearInterval(id);
-  }, [load]);
-
-  return {
-    marketData,
-    backendOnline,
-    lastUpdate,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Convert backend market response into ticker rows
-// ---------------------------------------------------------------------------
-
-function buildTickerData(marketData) {
-  const allAssets = [
-    ...ASSETS.crypto,
-    ...ASSETS.meme,
-    ...ASSETS.forex,
-    ...ASSETS.commodities,
-  ];
-
-  return allAssets.map((asset) => {
-    const raw =
-      marketData?.[asset.symbol] ||
-      marketData?.[
-        asset.symbol.replace("/", "")
-      ];
-
-    const price = Number(
-      raw?.price ??
-        raw?.last ??
-        raw?.close ??
-        asset.base
-    );
-
-    const pct = Number(
-      raw?.pct ??
-        raw?.changePercent ??
-        raw?.change_pct ??
-        0
-    );
-
-    const history = Array.isArray(
-      raw?.history
-    )
-      ? raw.history.map(Number)
-      : seedSeries(price);
-
-    return {
-      symbol: asset.symbol,
-      price,
-      pct,
-      up: pct >= 0,
-      history:
-        history.length > 0
-          ? history
-          : seedSeries(price),
-    };
+function AccountView({ auth, onLogout, onShowAuth, onProfileSaved, plans, currentPlan, onSubscribe }) {
+  const [form, setForm] = useState({
+    username: auth?.profile?.username || "",
+    firstName: auth?.profile?.firstName || "",
+    lastName: auth?.profile?.lastName || "",
+    country: auth?.profile?.country || "",
+    bio: auth?.profile?.bio || "",
+    avatar: auth?.profile?.avatar || null,
   });
-}
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const fileRef = useRef(null);
 
-// ---------------------------------------------------------------------------
-// Signals hook
-// ---------------------------------------------------------------------------
-
-function useSignals() {
-  const [signals, setSignals] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetchWithTimeout(
-        `${BACKEND_URL}/api/signals`,
-        12000
-      );
-
-      if (!res.ok) {
-        throw new Error(
-          `HTTP ${res.status}`
-        );
-      }
-
-      const data = await res.json();
-
-      const incoming =
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data?.signals)
-          ? data.signals
-          : [];
-
-      setSignals(
-        incoming.map((s, index) => ({
-          id:
-            s.id ||
-            `signal-${index}-${s.symbol}`,
-          symbol:
-            s.symbol || "UNKNOWN",
-          direction:
-            String(
-              s.direction ||
-                s.side ||
-                "BUY"
-            ).toUpperCase(),
-          entry: Number(
-            s.entry ?? s.entryPrice ?? 0
-          ),
-          target: Number(
-            s.target ??
-              s.takeProfit ??
-              s.tp ??
-              0
-          ),
-          stop: Number(
-            s.stop ??
-              s.stopLoss ??
-              s.sl ??
-              0
-          ),
-          confidence: Number(
-            s.confidence ?? 0
-          ),
-          reason:
-            s.reason ||
-            s.description ||
-            "Market structure signal",
-          marketKey:
-            s.marketKey ||
-            s.market ||
-            "crypto",
-          ts:
-            s.ts ||
-            s.timestamp ||
-            Date.now(),
-          unlockAt:
-            s.unlockAt ||
-            null,
-        }))
-      );
-    } catch {
-      // keep previous signals
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-
-    const id = setInterval(
-      load,
-      POLL_MS
-    );
-
-    return () => clearInterval(id);
-  }, [load]);
-
-  return {
-    signals,
-    loading,
-  };
-}
-function LoginView({ onLogin, onGuest }) {
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState("email");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const requestOtp = async (e) => {
-    e.preventDefault();
-
-    setError("");
-
-    const cleanEmail =
-      email.trim().toLowerCase();
-
-    if (!cleanEmail || !cleanEmail.includes("@")) {
-      setError(
-        "Please enter a valid email address."
-      );
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/auth/request-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: cleanEmail,
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data?.message ||
-            "Unable to send OTP."
-        );
-      }
-
-      setStep("otp");
-    } catch (err) {
-      setError(
-        err?.message ||
-          "Unable to send OTP."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp = async (e) => {
-    e.preventDefault();
-
-    setError("");
-
-    if (!otp.trim()) {
-      setError("Enter the OTP.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/auth/verify-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: email.trim().toLowerCase(),
-            otp: otp.trim(),
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(
-          data?.message ||
-            "Invalid OTP."
-        );
-      }
-
-      const auth = {
-        token:
-          data?.token ||
-          data?.accessToken ||
-          "",
-        userId:
-          data?.userId ||
-          data?.user?.id ||
-          "",
-        email:
-          data?.email ||
-          email.trim().toLowerCase(),
+  const handleAvatar = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 160;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const s = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+        setForm((f) => ({ ...f, avatar: canvas.toDataURL("image/jpeg", 0.82) }));
       };
-
-      if (!auth.token || !auth.userId) {
-        throw new Error(
-          "Authentication response is incomplete."
-        );
-      }
-
-      saveStoredAuth(auth);
-
-      onLogin({
-        ...auth,
-        user:
-          data?.user ||
-          null,
-      });
-    } catch (err) {
-      setError(
-        err?.message ||
-          "OTP verification failed."
-      );
-    } finally {
-      setLoading(false);
-    }
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
   };
 
-  return (
-    <div className="auth-page">
-      <div className="auth-glow" />
-
-      <div className="auth-card">
-        <div className="auth-brand">
-          <div className="brand-mark large">
-            <Zap size={20} />
-          </div>
-
-          <div className="brand-name">
-            CandleVolt
-          </div>
-        </div>
-
-        <div className="auth-eyebrow">
-          MARKET INTELLIGENCE
-        </div>
-
-        <h1>
-          {step === "email"
-            ? "Welcome back"
-            : "Verify your email"}
-        </h1>
-
-        <p className="auth-sub">
-          {step === "email"
-            ? "Sign in to access your trading dashboard."
-            : `Enter the OTP sent to ${email}.`}
-        </p>
-
-        {step === "email" ? (
-          <form
-            className="auth-form"
-            onSubmit={requestOtp}
-          >
-            <label>
-              Email address
-            </label>
-
-            <input
-              type="email"
-              value={email}
-              placeholder="you@example.com"
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
-              autoComplete="email"
-            />
-
-            {error && (
-              <div className="auth-error">
-                {error}
-              </div>
-            )}
-
-            <button
-              className="gold-btn auth-submit"
-              disabled={loading}
-              type="submit"
-            >
-              {loading
-                ? "Sending…"
-                : "Continue"}
-              <ChevronRight size={15} />
-            </button>
-          </form>
-        ) : (
-          <form
-            className="auth-form"
-            onSubmit={verifyOtp}
-          >
-            <label>
-              One-time password
-            </label>
-
-            <input
-              type="text"
-              value={otp}
-              placeholder="Enter OTP"
-              inputMode="numeric"
-              maxLength={8}
-              onChange={(e) =>
-                setOtp(
-                  e.target.value.replace(
-                    /\D/g,
-                    ""
-                  )
-                )
-              }
-              autoComplete="one-time-code"
-            />
-
-            {error && (
-              <div className="auth-error">
-                {error}
-              </div>
-            )}
-
-            <button
-              className="gold-btn auth-submit"
-              disabled={loading}
-              type="submit"
-            >
-              {loading
-                ? "Verifying…"
-                : "Verify & Sign In"}
-              <Check size={15} />
-            </button>
-
-            <button
-              type="button"
-              className="text-btn"
-              onClick={() => {
-                setStep("email");
-                setOtp("");
-                setError("");
-              }}
-            >
-              Use a different email
-            </button>
-          </form>
-        )}
-
-        <div className="auth-divider">
-          <span />
-          OR
-          <span />
-        </div>
-
-        <button
-          className="guest-btn"
-          onClick={onGuest}
-        >
-          Continue as Guest
-        </button>
-
-        <div className="auth-note">
-          By continuing, you agree to use
-          CandleVolt for informational and
-          market-analysis purposes.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Account / profile
-// ---------------------------------------------------------------------------
-
-function AccountView({
-  user,
-  plan,
-  onLogout,
-  onUpgrade,
-}) {
-  const [profile, setProfile] =
-    useState({
-      name:
-        user?.name ||
-        user?.username ||
-        "",
-      username:
-        user?.username || "",
-      country:
-        user?.country || "",
-      bio:
-        user?.bio || "",
-    });
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [saved, setSaved] =
-    useState(false);
-
-  useEffect(() => {
-    setProfile({
-      name:
-        user?.name ||
-        user?.username ||
-        "",
-      username:
-        user?.username || "",
-      country:
-        user?.country || "",
-      bio:
-        user?.bio || "",
-    });
-  }, [user]);
-
-  const updateField = (
-    field,
-    value
-  ) => {
-    setProfile((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-
-    setSaved(false);
-  };
-
-  const saveProfile = async () => {
-    const auth = loadStoredAuth();
-
-    if (!auth?.token) return;
-
+  const save = async () => {
     setSaving(true);
-    setSaved(false);
-
+    setSaveMsg("");
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/profile`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type":
-              "application/json",
-            Authorization: `Bearer ${auth.token}`,
-          },
-          body: JSON.stringify(profile),
-        }
-      );
-
-      if (!res.ok) {
-        throw new Error(
-          "Profile update failed."
-        );
+      const stored = loadStoredAuth();
+      const res = await fetch(`${BACKEND_URL}/api/auth/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${stored?.token}`,
+        },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaveMsg("Saved.");
+        onProfileSaved(data.profile);
+      } else {
+        setSaveMsg(data.error || "Could not save.");
       }
-
-      setSaved(true);
     } catch {
-      // keep local form state
+      setSaveMsg("Couldn't reach the server.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="view-wrap">
-      <div className="view-head">
-        <div>
-          <div className="eyebrow">
-            YOUR ACCOUNT
+    <>
+      <div className="panel">
+        <div className="panel-title">
+          <UserCircle size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Profile
+        </div>
+        {auth?.guest ? (
+          <div className="account-guest-box">
+            <p>You're browsing as a guest — sign in to save your profile and plan.</p>
+            <button className="rzp-btn" onClick={onShowAuth}>
+              Sign in
+            </button>
           </div>
+        ) : (
+          <>
+            <div className="profile-avatar-row">
+              <div className="profile-avatar" onClick={() => fileRef.current?.click()}>
+                {form.avatar ? <img src={form.avatar} alt="avatar" /> : <UserCircle size={36} />}
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleAvatar}
+              />
+              <div>
+                <div className="account-email">{auth?.email}</div>
+                <div className="account-plan-label">Current plan: {currentPlan}</div>
+              </div>
+            </div>
 
-          <h2>Account</h2>
+            <input
+              className="auth-input"
+              placeholder="Username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="auth-input"
+                placeholder="First name"
+                value={form.firstName}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+              />
+              <input
+                className="auth-input"
+                placeholder="Last name"
+                value={form.lastName}
+                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+              />
+            </div>
+            <input
+              className="auth-input"
+              placeholder="Country"
+              value={form.country}
+              onChange={(e) => setForm({ ...form, country: e.target.value })}
+            />
+            <textarea
+              className="auth-input profile-bio"
+              placeholder="Bio"
+              rows={3}
+              value={form.bio}
+              onChange={(e) => setForm({ ...form, bio: e.target.value })}
+            />
 
-          <p className="view-sub">
-            Manage your profile and
-            subscription.
-          </p>
+            <button className="rzp-btn" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save profile"}
+            </button>
+            {saveMsg && <div className="profile-save-msg">{saveMsg}</div>}
+
+            <button className="auth-badge-btn" style={{ marginTop: 12 }} onClick={onLogout}>
+              Log out
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-title">
+          <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Subscription Plans
+        </div>
+        <div className="plans-row">
+          {plans.map((p) => (
+            <div
+              key={p.name}
+              className={`plan-card ${p.highlight ? "highlight" : ""} ${
+                currentPlan === p.name ? "active" : ""
+              }`}
+            >
+              <div className="plan-head">
+                <span className="plan-name">
+                  {p.name === "Elite" && <Crown size={13} />}
+                  {p.name}
+                </span>
+                <span className="plan-price">
+                  {p.price}
+                  <span>{p.period}</span>
+                </span>
+              </div>
+              <div className="plan-feats">
+                {p.features.map((f) => (
+                  <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <button
+                className="plan-pay-btn"
+                disabled={p.name === "Free"}
+                onClick={() => onSubscribe(p)}
+              >
+                <QrCode size={13} />
+                {p.name === "Free" ? "Current plan" : "Subscribe"}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="account-grid">
-        <div className="panel profile-panel">
-          <div className="profile-head">
-            <div className="avatar">
-              {(
-                profile.name ||
-                profile.username ||
-                "C"
-              )
-                .charAt(0)
-                .toUpperCase()}
-            </div>
-
-            <div>
-              <div className="profile-name">
-                {profile.name ||
-                  profile.username ||
-                  "CandleVolt User"}
-              </div>
-
-              <div className="profile-email">
-                {user?.email || "Guest"}
-              </div>
-            </div>
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-title">
+          <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+          Your Earnings
+        </div>
+        <div className="stat-row">
+          <div className="stat-box">
+            <div className="stat-label"><Users size={11} /> Subscribers</div>
+            <div className="stat-val">312</div>
           </div>
-
-          <div className="profile-form">
-            <div className="form-field">
-              <label>
-                Name
-              </label>
-
-              <input
-                value={profile.name}
-                onChange={(e) =>
-                  updateField(
-                    "name",
-                    e.target.value
-                  )
-                }
-                placeholder="Your name"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>
-                Username
-              </label>
-
-              <input
-                value={profile.username}
-                onChange={(e) =>
-                  updateField(
-                    "username",
-                    e.target.value
-                  )
-                }
-                placeholder="Username"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>
-                Country
-              </label>
-
-              <input
-                value={profile.country}
-                onChange={(e) =>
-                  updateField(
-                    "country",
-                    e.target.value
-                  )
-                }
-                placeholder="Country"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>
-                Bio
-              </label>
-
-              <textarea
-                value={profile.bio}
-                onChange={(e) =>
-                  updateField(
-                    "bio",
-                    e.target.value
-                  )
-                }
-                placeholder="Tell us about yourself"
-                rows={4}
-              />
-            </div>
-
-            <div className="profile-actions">
-              <button
-                className="gold-btn"
-                onClick={saveProfile}
-                disabled={saving}
-              >
-                {saving
-                  ? "Saving…"
-                  : saved
-                  ? "Saved"
-                  : "Save Profile"}
-
-                {saved ? (
-                  <Check size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </button>
-            </div>
+          <div className="stat-box">
+            <div className="stat-label"><Wallet size={11} /> This Month</div>
+            <div className="stat-val gold">₹1,86,400</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-label"><Crown size={11} /> Elite Users</div>
+            <div className="stat-val">44</div>
           </div>
         </div>
+        <div className="disclaimer">
+          <ShieldCheck size={16} />
+          <span>
+            Illustrative numbers — wire them to your real user table (see
+            backend db.js) once you have paying users.
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
 
-        <div className="account-side">
-          <div className="panel plan-panel">
-            <div className="plan-head">
-              <div>
-                <div className="eyebrow">
-                  CURRENT PLAN
-                </div>
+function AuthModal({ onAuthenticated, onClose }) {
+  const [step, setStep] = useState("email"); // email | otp
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-                <div className="plan-name">
-                  {String(plan)
-                    .charAt(0)
-                    .toUpperCase() +
-                    String(plan).slice(1)}
-                </div>
-              </div>
+  const requestOtp = async () => {
+    setError("");
+    if (!email) {
+      setError("Enter your email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/request-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong.");
+        return;
+      }
+      setStep("otp");
+    } catch {
+      setError("Couldn't reach the server — try again in a moment.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-              <div className="plan-icon">
-                <Crown size={18} />
-              </div>
-            </div>
+  const verifyOtp = async () => {
+    setError("");
+    if (!code) {
+      setError("Enter the code sent to your email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Invalid code.");
+        return;
+      }
+      saveStoredAuth({ token: data.token, userId: data.userId, email: data.email });
+      onAuthenticated({
+        userId: data.userId,
+        email: data.email,
+        plan: data.plan,
+        profile: data.profile,
+      });
+    } catch {
+      setError("Couldn't reach the server — try again in a moment.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            <div className="plan-status">
-              {plan === "free"
-                ? "Free access"
-                : "Premium access enabled"}
-            </div>
-
-            {plan === "free" && (
-              <button
-                className="gold-btn"
-                onClick={onUpgrade}
-              >
-                Upgrade
-                <ChevronRight size={14} />
-              </button>
-            )}
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="modal-title">
+            <Zap size={16} /> {step === "email" ? "Sign in" : "Enter code"}
           </div>
-
-          <div className="panel security-panel">
-            <div className="panel-title">
-              <ShieldCheck
-                size={14}
-              />
-              Account Security
-            </div>
-
-            <div className="security-row">
-              <span>
-                Email verification
-              </span>
-
-              <span className="security-good">
-                Verified
-              </span>
-            </div>
-
-            <div className="security-row">
-              <span>
-                Authentication
-              </span>
-
-              <span>
-                OTP
-              </span>
-            </div>
-          </div>
-
-          <button
-            className="logout-btn"
-            onClick={onLogout}
-          >
-            Log out
+          <button className="modal-close" onClick={onClose}>
+            <X size={16} />
           </button>
         </div>
+
+        {step === "email" ? (
+          <>
+            <input
+              className="auth-input"
+              type="email"
+              autoComplete="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && requestOtp()}
+            />
+            {error && <div className="rzp-error">{error}</div>}
+            <button className="rzp-btn" onClick={requestOtp} disabled={loading}>
+              {loading ? "Sending…" : "Send code"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="otp-hint">Code sent to {email}</div>
+            <input
+              className="auth-input"
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="6-digit code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
+            />
+            {error && <div className="rzp-error">{error}</div>}
+            <button className="rzp-btn" onClick={verifyOtp} disabled={loading}>
+              {loading ? "Verifying…" : "Verify & continue"}
+            </button>
+            <div className="auth-switch">
+              <span onClick={() => setStep("email")}>Use a different email</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
-  }
-function PlansModal({
-  currentPlan,
-  onClose,
-  onSelectPlan,
-}) {
+}
+
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
+function PaymentModal({ plan, sessionId, onClose, onActivated }) {
+  const [tab, setTab] = useState("crypto");
+  const [copied, setCopied] = useState(false);
+  const [rzpLoading, setRzpLoading] = useState(false);
+  const [rzpError, setRzpError] = useState("");
+
+  const [cryptoOrder, setCryptoOrder] = useState(null);
+  const [cryptoError, setCryptoError] = useState("");
+  const [cryptoStatus, setCryptoStatus] = useState("pending");
+
+  useEffect(() => {
+    if (tab !== "crypto" || cryptoOrder) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/subscribe/create-crypto-order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: sessionId, planName: plan.name }),
+        });
+        if (!res.ok) throw new Error("bad response");
+        const data = await res.json();
+        if (!cancelled) setCryptoOrder(data);
+      } catch {
+        if (!cancelled)
+          setCryptoError("Couldn't reach the backend to create a payment order.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, cryptoOrder, sessionId, plan.name]);
+
+  useEffect(() => {
+    if (!cryptoOrder || cryptoStatus !== "pending") return;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${BACKEND_URL}/api/subscribe/crypto-status?orderId=${cryptoOrder.orderId}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === "paid") {
+          setCryptoStatus("paid");
+          onActivated(plan.name);
+        } else if (data.status === "expired") {
+          setCryptoStatus("expired");
+        }
+      } catch {
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [cryptoOrder, cryptoStatus, onActivated, plan.name]);
+
+  const qrUrl = cryptoOrder
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&color=237-166-75&bgcolor=13-16-23&data=${encodeURIComponent(
+        cryptoOrder.walletAddress
+      )}`
+    : null;
+
+  const handleCopy = (text) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const payWithRazorpay = async () => {
+    setRzpError("");
+    setRzpLoading(true);
+    try {
+      const orderRes = await fetch(`${BACKEND_URL}/api/subscribe/create-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: sessionId, planName: plan.name }),
+      });
+      if (!orderRes.ok) throw new Error("Order creation failed");
+      const order = await orderRes.json();
+
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error("Could not load Razorpay checkout");
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: "CandleVolt",
+        description: `${plan.name} plan`,
+        theme: { color: "#E3A64B" },
+        handler: async (response) => {
+          try {
+            const verifyRes = await fetch(`${BACKEND_URL}/api/subscribe/verify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature,
+                userId: sessionId,
+                planName: plan.name,
+              }),
+            });
+            if (verifyRes.ok) {
+              onActivated(plan.name);
+            } else {
+              setRzpError("Payment captured but verification failed — contact support.");
+            }
+          } catch {
+            setRzpError("Verification request failed.");
+          }
+        },
+      });
+      rzp.on("payment.failed", () => setRzpError("Payment failed or was cancelled."));
+      rzp.open();
+    } catch (e) {
+      setRzpError(
+        e.message === "Order creation failed"
+          ? "Couldn't reach the backend — is it running and is BACKEND_URL set correctly?"
+          : e.message
+      );
+    } finally {
+      setRzpLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="modal-title">
+            <QrCode size={16} /> Subscribe — {plan.name}
+          </div>
+          <button className="modal-close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="pay-tabs">
+          <button
+            className={`pay-tab ${tab === "crypto" ? "pay-tab-active" : ""}`}
+            onClick={() => setTab("crypto")}
+          >
+            <QrCode size={13} /> Crypto
+          </button>
+          <button
+            className={`pay-tab ${tab === "razorpay" ? "pay-tab-active" : ""}`}
+            onClick={() => setTab("razorpay")}
+          >
+            <CreditCard size={13} /> Card / UPI
+          </button>
+        </div>
+
+        <div className="modal-plan-row">
+          <span>{plan.name} plan</span>
+          <span className="modal-amount">
+            {plan.price}
+            {tab === "crypto" && cryptoOrder && (
+              <span className="modal-amount-usdt"> ≈ {cryptoOrder.amount} USDT</span>
+            )}
+          </span>
+        </div>
+
+        {tab === "crypto" ? (
+          <>
+            {cryptoError && <div className="rzp-error">{cryptoError}</div>}
+
+            {!cryptoOrder && !cryptoError && (
+              <div className="rzp-box">
+                <p>Setting up your payment order…</p>
+              </div>
+            )}
+
+            {cryptoOrder && cryptoStatus === "pending" && (
+              <>
+                <div className="exact-amount-box">
+                  <div className="exact-amount-label">Send exactly</div>
+                  <div className="exact-amount-value">
+                    {cryptoOrder.amount} USDT
+                    <button
+                      className="copy-btn-inline"
+                      onClick={() => handleCopy(String(cryptoOrder.amount))}
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                  <div className="exact-amount-warn">
+                    The exact decimal amount matters — it's how we identify your
+                    payment. Sending a rounded amount will delay activation.
+                  </div>
+                </div>
+
+                <div className="qr-box">
+                  <img src={qrUrl} alt="Payment QR code" width={190} height={190} />
+                </div>
+
+                <div className="wallet-row">
+                  <span className="wallet-addr">{cryptoOrder.walletAddress}</span>
+                  <button
+                    className="copy-btn"
+                    onClick={() => handleCopy(cryptoOrder.walletAddress)}
+                  >
+                    {copied ? <Check size={13} /> : <Copy size={13} />}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+
+                <div className="waiting-row">
+                  <span className="pulse-dot" />
+                  Waiting for payment — this page updates automatically, no need
+                  to refresh.
+                </div>
+
+                <div className="modal-note">
+                  Network: <strong>USDT-TRC20</strong> only. Sending on any other
+                  network will not be detected.
+                </div>
+              </>
+            )}
+
+            {cryptoStatus === "paid" && (
+              <div className="rzp-box">
+                <Check size={22} style={{ color: "#E3A64B", marginBottom: 8 }} />
+                <p>Payment received — your plan is now active.</p>
+              </div>
+            )}
+
+            {cryptoStatus === "expired" && (
+              <div className="rzp-box">
+                <p>This payment window expired. Close and reopen to get a fresh amount.</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="rzp-box">
+              <CreditCard size={22} style={{ color: "#E3A64B", marginBottom: 8 }} />
+              <p>
+                Pay securely via Razorpay Checkout — cards, UPI, and netbanking.
+                Your plan activates automatically the moment payment clears.
+              </p>
+              <button className="rzp-btn" onClick={payWithRazorpay} disabled={rzpLoading}>
+                {rzpLoading ? "Opening checkout…" : `Pay ${plan.price} now`}
+              </button>
+              {rzpError && <div className="rzp-error">{rzpError}</div>}
+            </div>
+            <div className="modal-demo-tag">
+              <ShieldCheck size={12} /> Requires the CandleVolt backend running with
+              real Razorpay keys — see backend README.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+
+export default function CandleVolt() {
+  const [market, setMarket] = useState("crypto");
+  const [view, setView] = useState("dashboard");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [series, setSeries] = useState(() => {
+    const all = {};
+    Object.values(ASSETS)
+      .flat()
+      .forEach((a) => {
+        all[a.symbol] = seedSeries(a.base);
+      });
+    return all;
+  });
+  const [signals, setSignals] = useState([]);
+  const [selected, setSelected] = useState(ASSETS.crypto[0].symbol);
+  const [dashboardTf, setDashboardTf] = useState("1m");
+  const [payingPlan, setPayingPlan] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [connected, setConnected] = useState(true);
+
+  // ---- Auth state ----
+  // Defaults silently to a guest session on load — never a blocking popup.
+  // Sign-in is opt-in via the profile button in the header / Account view.
+  const [auth, setAuth] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const guestIdRef = useRef(null);
+
+  const effectiveUserId = auth?.userId || guestIdRef.current;
+  useEffect(() => {
+    (async () => {
+      const stored = loadStoredAuth();
+      if (!stored) {
+        if (!guestIdRef.current) guestIdRef.current = makeSessionId();
+        setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
+        setAuthChecked(true);
+        return;
+      }
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${stored.token}` },
+        });
+        if (!res.ok) throw new Error("session invalid");
+        const data = await res.json();
+        setAuth({
+          userId: data.userId,
+          email: data.email,
+          plan: data.plan,
+          profile: data.profile || {},
+          guest: false,
+        });
+      } catch {
+        clearStoredAuth();
+        if (!guestIdRef.current) guestIdRef.current = makeSessionId();
+        setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, []);
+
+  const handleAuthenticated = ({ userId, email, plan, profile }) => {
+    setAuth({ userId, email, plan, profile: profile || {}, guest: false });
+    setShowAuthModal(false);
+  };
+  const handleProfileSaved = (profile) => {
+    setAuth((prev) => (prev ? { ...prev, profile } : prev));
+  };
+
+  const handleLogout = () => {
+    clearStoredAuth();
+    guestIdRef.current = makeSessionId();
+    setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
+    setView("dashboard");
+  };
+
+  const allAssets = Object.values(ASSETS).flat();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Poll the real backend for prices — falls back to holding the last known
+  // value (and flags "offline") if the backend isn't reachable yet.
+  const pollPrices = useCallback(async () => {
+    try {
+      const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      if (!data || typeof data !== "object") throw new Error("bad payload");
+      setConnected(true);
+      setSeries((prev) => {
+        const next = { ...prev };
+        Object.values(data).forEach((list) => {
+          if (!Array.isArray(list)) return;
+          list.forEach((entry) => {
+            const symbol = entry?.symbol;
+            const price = entry?.price;
+            if (!symbol || price == null || Number.isNaN(price)) return;
+            const arr = [...(next[symbol] || seedSeries(price))];
+            arr.push(price);
+            if (arr.length > HISTORY_LEN) arr.shift();
+            next[symbol] = arr;
+          });
+        });
+        return next;
+      });
+    } catch (e) {
+      console.warn("[CandleVolt] price poll failed:", e?.message);
+      setConnected(false);
+    }
+  }, []);
+  // Poll real signals for the active market — free-plan delay is enforced
+  // server-side, so whatever we get back here is already correctly gated.
+  const pollSignals = useCallback(async () => {
+    if (!effectiveUserId) return;
+    try {
+      const res = await fetchWithTimeout(
+        `${BACKEND_URL}/api/signals?market=${market}&userId=${effectiveUserId}`
+      );
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      setSignals(Array.isArray(data?.signals) ? data.signals : []);
+    } catch (e) {
+      console.warn("[CandleVolt] signal poll failed:", e?.message);
+      // keep whatever signals we already have rather than clearing them
+    }
+  }, [market, effectiveUserId]);
+
+  useEffect(() => {
+    pollPrices();
+    pollSignals();
+    const priceId = setInterval(pollPrices, POLL_MS);
+    const sigId = setInterval(pollSignals, POLL_MS);
+    return () => {
+      clearInterval(priceId);
+      clearInterval(sigId);
+    };
+  }, [pollPrices, pollSignals]);
+
+  const tickerData = allAssets.map((a) => {
+    const arr = series[a.symbol];
+    const price = arr[arr.length - 1];
+    const prev = arr[Math.max(0, arr.length - 6)];
+    const pct = prev ? ((price - prev) / prev) * 100 : 0;
+    return { symbol: a.symbol, price, up: price >= prev, pct };
+  });
+
+  const visibleAssets = ASSETS[market];
+  const currentPlan = auth?.plan || "Free";
+  const isFree = currentPlan === "Free";
+
   const plans = [
     {
-      key: "free",
       name: "Free",
       price: "₹0",
-      period: "/month",
-      description:
-        "Get started with essential market signals.",
-      features: [
-        "3 signals per day",
-        "2–3 minute signal delay",
-        "Crypto markets",
-      ],
+      period: "/mo",
+      features: ["3 signals / day", "2–3 min delayed", "Crypto only"],
     },
     {
-      key: "pro",
       name: "Pro",
       price: "₹999",
-      period: "/month",
-      description:
-        "For active traders who need real-time signals.",
+      period: "/mo",
       features: [
         "Unlimited signals",
-        "Real-time signal delivery",
+        "Real-time delivery",
         "Crypto + Forex + Commodities",
-        "Entry / Target / Stop levels",
+        "Entry / Target / Stop",
       ],
+      highlight: true,
     },
     {
-      key: "elite",
       name: "Elite",
       price: "₹2,499",
-      period: "/month",
-      description:
-        "Maximum access and advanced signal intelligence.",
+      period: "/mo",
       features: [
         "Everything in Pro",
         "Memecoin signals",
@@ -2337,3344 +1524,618 @@ function PlansModal({
       ],
     },
   ];
-
   return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-    >
-      <div
-        className="plans-modal"
-        onClick={(e) =>
-          e.stopPropagation()
-        }
-      >
-        <button
-          className="modal-close"
-          onClick={onClose}
-        >
-          <X size={17} />
-        </button>
+    <div className="app-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
-        <div className="plans-heading">
-          <div className="eyebrow">
-            CANDLEVOLT ACCESS
+        * { box-sizing: border-box; }
+        html, body { margin: 0; overflow-x: hidden; max-width: 100%; }
+        .app-root {
+          background: radial-gradient(ellipse 1200px 600px at 50% -10%, #161B26 0%, #0A0D12 55%);
+          min-height: 100vh;
+          width: 100%;
+          overflow-x: hidden;
+          color: #EDEFF3;
+          font-family: 'Inter', sans-serif;
+          padding-bottom: 48px;
+        }
+        .ticker-wrap {
+          overflow: hidden;
+          border-bottom: 1px solid #232A3B;
+          background: linear-gradient(180deg, #0F131B, #0A0D12);
+          white-space: nowrap;
+        }
+        .ticker-track {
+          display: inline-flex;
+          animation: scroll 34s linear infinite;
+          padding: 8px 0;
+        }
+        @keyframes scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+        .ticker-item {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+          padding: 0 22px;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 12px;
+          border-right: 1px solid #1B2130;
+        }
+        .ticker-sym { color: #9AA3B5; }
+        .ticker-up { color: #E3A64B; }
+        .ticker-down { color: #E2555A; }
+
+        .header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 22px 28px 18px;
+          max-width: 1100px;
+          margin: 0 auto;
+        }
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-family: 'Space Grotesk', sans-serif;
+          font-weight: 700;
+          font-size: 20px;
+          letter-spacing: -0.01em;
+        }
+        .brand-mark {
+          width: 30px; height: 30px;
+          border-radius: 7px;
+          background: linear-gradient(135deg, #F0B65C, #C97A2E);
+          box-shadow: 0 2px 10px rgba(227,166,75,0.35);
+          display: flex; align-items: center; justify-content: center;
+          color: #0A0D12;
+        }
+        .live-pill.offline { color: #E2555A; border-color: #3A1E20; }
+        .header-right { display: flex; align-items: center; gap: 10px; }
+        .menu-btn {
+          background: none; border: none; color: #9AA3B5; cursor: pointer;
+          padding: 4px; display: flex; align-items: center;
+        }
+        .menu-scrim {
+          position: fixed; inset: 0; background: rgba(4,5,8,0);
+          pointer-events: none; transition: background .2s ease; z-index: 60;
+        }
+        .menu-scrim-open { background: rgba(4,5,8,0.6); pointer-events: auto; }
+        .side-menu {
+          position: fixed; top: 0; left: 0; bottom: 0; width: 260px;
+          background: linear-gradient(180deg, #161C29, #10141C);
+          border-right: 1px solid #232A3B;
+          box-shadow: 20px 0 60px rgba(0,0,0,0.4);
+          transform: translateX(-100%); transition: transform .22s ease;
+          z-index: 61; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px;
+        }
+        .side-menu-open { transform: translateX(0); }
+        .side-menu-head {
+          display: flex; align-items: center; gap: 10px;
+          font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px;
+          padding: 4px 10px 18px;
+        }
+        .side-menu-items { display: flex; flex-direction: column; gap: 4px; }
+        .side-menu-item {
+          display: flex; align-items: center; gap: 12px;
+          padding: 11px 12px; border-radius: 8px; border: none; background: none;
+          color: #9AA3B5; font-family: 'Inter', sans-serif; font-size: 13.5px;
+          cursor: pointer; text-align: left;
+        }
+        .side-menu-item:hover { background: #171D2A; }
+        .side-menu-item.active { background: linear-gradient(135deg, #1E2740, #171D2A); color: #E3A64B; font-weight: 600; box-shadow: inset 0 1px 0 rgba(227,166,75,0.1); }
+        .coming-soon { text-align: center; padding: 26px 14px; }
+        .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
+        .analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
+        .analysis-text { font-size: 13.5px; color: #EDEFF3; line-height: 1.8; white-space: pre-wrap; margin-bottom: 16px; }
+        .cal-feed { display: flex; flex-direction: column; gap: 8px; max-height: 560px; overflow-y: auto; }
+        .cal-item { background: #0D1017; border: 1px solid #1B2130; border-left: 3px solid #5C6478; border-radius: 8px; padding: 10px 12px; }
+        .cal-high { border-left-color: #E2555A; }
+        .cal-medium { border-left-color: #E3A64B; }
+        .cal-low { border-left-color: #5C6478; }
+        .cal-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .cal-country { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9AA3B5; }
+        .cal-impact { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; }
+        .cal-impact-high { color: #E2555A; background: rgba(226,85,90,0.12); }
+        .cal-impact-medium { color: #E3A64B; background: rgba(227,166,75,0.12); }
+        .cal-impact-low { color: #9AA3B5; background: rgba(154,163,181,0.12); }
+        .cal-title { font-size: 13px; color: #EDEFF3; font-weight: 500; margin-bottom: 4px; }
+        .cal-time { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px; }
+        .cal-figures { display: flex; gap: 12px; font-size: 10.5px; color: #9AA3B5; flex-wrap: wrap; }
+        .account-guest-box { text-align: center; padding: 10px 0; }
+        .account-guest-box p { font-size: 12.5px; color: #9AA3B5; margin-bottom: 14px; line-height: 1.6; }
+        .account-info-row { display: flex; justify-content: space-between; align-items: center; }
+        .account-email { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #EDEFF3; margin-bottom: 4px; }
+        .account-plan-label { font-size: 11.5px; color: #9AA3B5; }
+        .auth-badge { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+        .auth-badge-label { color: #9AA3B5; font-family: 'IBM Plex Mono', monospace; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .auth-badge-btn { background: #1A2030; border: 1px solid #232A3B; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+        .profile-btn {
+          width: 32px; height: 32px; border-radius: 50%; border: 1px solid #232A3B;
+          background: #12161F; color: #9AA3B5; display: flex; align-items: center;
+          justify-content: center; cursor: pointer; overflow: hidden; padding: 0;
+        }
+        .profile-btn-avatar { width: 100%; height: 100%; object-fit: cover; }
+        .profile-avatar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .profile-avatar {
+          width: 56px; height: 56px; border-radius: 50%; background: #0D1017;
+          border: 1px solid #232A3B; display: flex; align-items: center; justify-content: center;
+          color: #5C6478; cursor: pointer; overflow: hidden; flex-shrink: 0;
+        }
+        .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .profile-bio { resize: none; font-family: 'Inter', sans-serif; }
+        .profile-save-msg { font-size: 11.5px; color: #9AA3B5; margin-top: 8px; }
+        .otp-hint { font-size: 12px; color: #9AA3B5; margin-bottom: 10px; }
+        .auth-input {
+          width: 100%; padding: 10px 12px; margin-bottom: 10px; border-radius: 8px;
+          border: 1px solid #232A3B; background: #0D1017; color: #EDEFF3;
+          font-family: 'Inter', sans-serif; font-size: 13px;
+        }
+        .auth-input:focus { outline: none; border-color: #3A2E1C; }
+        .auth-switch { text-align: center; font-size: 12px; color: #9AA3B5; margin-top: 12px; }
+        .auth-switch span { color: #E3A64B; cursor: pointer; font-weight: 600; }
+        .auth-guest { text-align: center; font-size: 11.5px; color: #5C6478; margin-top: 14px; cursor: pointer; text-decoration: underline; }
+        .live-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #E3A64B;
+          animation: pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+
+        .offline-banner {
+          display: flex; align-items: center; gap: 8px;
+          background: #1A1210; border: 1px solid #3A2418; color: #E3A64B;
+          font-size: 12px; border-radius: 8px; padding: 9px 12px; margin-bottom: 16px;
+        }
+
+        .market-tabs {
+          display: flex; gap: 6px; margin: 18px 0 20px; flex-wrap: wrap;
+        }
+        .tab-btn {
+          font-family: 'Space Grotesk', sans-serif;
+          font-weight: 600; font-size: 13px;
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: 1px solid #232A3B;
+          background: #12161F;
+          color: #9AA3B5;
+          cursor: pointer;
+          transition: all .18s ease;
+        }
+        .tab-btn.active {
+          background: linear-gradient(135deg, #1E2740, #171D2A);
+          color: #E3A64B;
+          border-color: #3A2E1C;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(227,166,75,0.1);
+        }
+
+        .layout {
+          display: grid;
+          grid-template-columns: 1.1fr 1.6fr;
+          gap: 20px;
+        }
+        @media (max-width: 820px) {
+          .layout { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+          background: linear-gradient(180deg, #141924, #10141C);
+          border: 1px solid #1B2130;
+          border-radius: 14px;
+          padding: 16px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+        .panel-title {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 13px; font-weight: 600;
+          color: #9AA3B5;
+          text-transform: uppercase; letter-spacing: 0.06em;
+          margin-bottom: 12px;
+        }
+
+        .asset-row {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 8px;
+          border-radius: 8px;
+          cursor: pointer;
+          border: 1px solid transparent;
+        }
+        .asset-row:hover { background: #171D2A; }
+        .asset-row.selected { border-color: #232A3B; background: #171D2A; }
+        .asset-info { display: flex; flex-direction: column; gap: 2px; }
+        .asset-sym { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; }
+        .asset-price { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #9AA3B5; }
+        .asset-chart { width: 90px; }
+        .chart-hero {
+          margin-top: 14px;
+          padding: 14px;
+          background: #0D1017;
+          border-radius: 10px;
+          border: 1px solid #1B2130;
+        }
+        .chart-hero-head {
+          display: flex; justify-content: space-between; align-items: baseline;
+          margin-bottom: 6px;
+        }
+        .chart-hero-sym {
+          font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 15px;
+        }
+        .chart-hero-price {
+          font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #E3A64B;
+        }
+        .candle-chart-box { width: 100%; max-width: 100%; border-radius: 6px; overflow: hidden; }
+        .tf-bar { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+        .tf-btn {
+          font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500;
+          padding: 5px 10px; border-radius: 6px; border: 1px solid #232A3B;
+          background: #0D1017; color: #9AA3B5; cursor: pointer;
+        }
+        .tf-btn.active { color: #E3A64B; border-color: #3A2E1C; background: #171307; }
+        .chart-symbol-picker { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+        .chart-page-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+        .chart-note { font-size: 10.5px; color: #5C6478; margin-top: 8px; line-height: 1.5; }
+
+        .sig-feed { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; }
+        .sig-card {
+          border-radius: 10px;
+          padding: 13px 14px;
+          border: 1px solid #1B2130;
+          background: linear-gradient(180deg, #10141C, #0C0F15);
+          border-left: 3px solid #E3A64B;
+          position: relative;
+          transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .sig-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+        .sig-sell { border-left-color: #E2555A; }
+        .sig-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .sig-dir { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 12px; color: #E3A64B; font-family: 'Space Grotesk', sans-serif; }
+        .sig-sell .sig-dir { color: #E2555A; }
+        .sig-market { font-size: 10px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; }
+        .sig-symbol { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+        .sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+        .sig-label { font-size: 10px; color: #5C6478; margin-bottom: 2px; }
+        .sig-val { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; }
+        .sig-val-up { color: #E3A64B; }
+        .sig-val-down { color: #E2555A; }
+        .sig-conf-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .sig-conf-track { flex: 1; height: 4px; background: #1B2130; border-radius: 4px; overflow: hidden; }
+        .sig-conf-fill { height: 100%; border-radius: 4px; }
+        .sig-conf-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9AA3B5; width: 32px; text-align: right; }
+        .sig-foot { display: flex; justify-content: space-between; font-size: 11px; color: #5C6478; }
+
+        .sig-locked { min-height: 96px; }
+        .blurred { filter: blur(5px); user-select: none; }
+        .lock-overlay {
+          position: absolute; inset: 0; top: 40px;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 4px; color: #E3A64B; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+          background: linear-gradient(180deg, rgba(13,16,23,0.4), rgba(13,16,23,0.92));
+        }
+        .lock-sub { color: #5C6478; font-size: 10.5px; font-family: 'Inter', sans-serif; }
+
+        .empty-state { padding: 30px 10px; text-align: center; color: #5C6478; font-size: 13px; line-height: 1.6; }
+
+        .news-feed { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+        .news-item {
+          display: block; padding: 10px 12px; border-radius: 8px;
+          background: #0D1017; border: 1px solid #1B2130;
+          text-decoration: none; color: inherit;
+        }
+        .news-item:hover { border-color: #232A3B; }
+        .news-title { font-size: 12.5px; color: #EDEFF3; line-height: 1.5; margin-bottom: 6px; }
+        .news-meta { display: flex; justify-content: space-between; font-size: 10.5px; }
+        .news-source { color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+        .news-time { color: #5C6478; font-family: 'IBM Plex Mono', monospace; }
+
+        .bottom-grid {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;
+        }
+        @media (max-width: 820px) { .bottom-grid { grid-template-columns: 1fr; } }
+
+        .stat-row { display: flex; justify-content: space-between; gap: 10px; }
+        .stat-box {
+          flex: 1; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; padding: 12px;
+        }
+        .stat-label { font-size: 10.5px; color: #5C6478; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+        .stat-val { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: #EDEFF3; }
+        .stat-val.gold { color: #E3A64B; }
+
+        .plans-row { display: flex; flex-direction: column; gap: 10px; }
+        .plan-card {
+          border: 1px solid #1B2130; border-radius: 12px; padding: 13px 14px;
+          background: #0D1017; cursor: pointer;
+          transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .plan-card.highlight {
+          border: 1px solid transparent;
+          background:
+            linear-gradient(#14110A, #14110A) padding-box,
+            linear-gradient(135deg, #E3A64B, #7A5620) border-box;
+          box-shadow: 0 6px 20px rgba(227,166,75,0.12);
+        }
+        .plan-card.active { outline: 1.5px solid #E3A64B; }
+        .plan-card:hover { transform: translateY(-1px); }
+        .plan-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .plan-name { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+        .plan-price { font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #E3A64B; }
+        .plan-price span { color: #5C6478; font-size: 11px; }
+        .plan-feats { font-size: 11.5px; color: #9AA3B5; line-height: 1.9; margin-bottom: 10px; }
+        .plan-pay-btn {
+          width: 100%; padding: 8px; border-radius: 7px; border: 1px solid #3A2E1C;
+          background: #1A2030; color: #E3A64B; font-family: 'Space Grotesk', sans-serif;
+          font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center;
+          justify-content: center; gap: 6px; transition: all .15s ease;
+        }
+        .plan-pay-btn:hover:not(:disabled) { background: #212940; box-shadow: 0 2px 10px rgba(227,166,75,0.15); }
+        .plan-pay-btn:disabled { opacity: 0.35; cursor: default; }
+
+        .disclaimer {
+          margin-top: 24px; padding: 12px 14px; border-radius: 10px;
+          background: #14110A; border: 1px solid #2A2013;
+          font-size: 11.5px; color: #9AA3B5; display: flex; gap: 8px;
+        }
+        .disclaimer svg { flex-shrink: 0; margin-top: 1px; color: #E3A64B; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #232A3B; border-radius: 4px; }
+
+        .modal-backdrop {
+          position: fixed; inset: 0; background: rgba(4,5,8,0.72);
+          backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 50; padding: 16px;
+        }
+                .modal-card {
+          background: linear-gradient(180deg, #161C29, #12161F);
+          border: 1px solid #232A3B; border-radius: 16px;
+          padding: 18px; width: 100%; max-width: 340px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .modal-title { display: flex; align-items: center; gap: 7px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px; color: #E3A64B; }
+        .modal-close { background: none; border: none; color: #5C6478; cursor: pointer; padding: 4px; }
+        .modal-plan-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; font-size: 13px; color: #9AA3B5; }
+        .modal-amount { font-family: 'IBM Plex Mono', monospace; color: #EDEFF3; font-size: 14px; }
+        .modal-amount-usdt { color: #E3A64B; font-size: 11.5px; }
+        .pay-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+        .pay-tab {
+          flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+          font-size: 12px; font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+          padding: 8px; border-radius: 7px; border: 1px solid #232A3B; background: #0D1017;
+          color: #9AA3B5; cursor: pointer;
+        }
+        .pay-tab-active { color: #E3A64B; border-color: #3A2E1C; background: #171307; }
+        .network-chips { display: flex; gap: 6px; margin-bottom: 14px; }
+        .chip { flex: 1; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; padding: 6px 4px; border-radius: 6px; border: 1px solid #232A3B; background: #0D1017; color: #9AA3B5; cursor: pointer; }
+        .chip-active { border-color: #3A2E1C; color: #E3A64B; background: #171307; }
+        .qr-box { display: flex; justify-content: center; padding: 12px; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; margin-bottom: 12px; }
+        .qr-box img { border-radius: 6px; }
+        .wallet-row { display: flex; align-items: center; gap: 8px; background: #0D1017; border: 1px solid #1B2130; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+        .wallet-addr { flex: 1; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #9AA3B5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .copy-btn { display: flex; align-items: center; gap: 4px; font-size: 11px; background: #1A2030; border: 1px solid #232A3B; color: #E3A64B; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+        .modal-note { font-size: 11px; color: #9AA3B5; line-height: 1.6; margin-bottom: 10px; }
+        .modal-demo-tag { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #5C6478; }
+        .rzp-box { text-align: center; padding: 18px 10px; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; margin-bottom: 12px; }
+        .rzp-box p { font-size: 12px; color: #9AA3B5; line-height: 1.6; margin: 0 0 14px; }
+        .rzp-btn {
+          width: 100%; padding: 10px; border-radius: 8px; border: none;
+          background: linear-gradient(135deg, #F0B65C, #C97A2E); color: #0A0D12;
+          font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px; cursor: pointer;
+          box-shadow: 0 4px 14px rgba(227,166,75,0.25); transition: transform .12s ease, box-shadow .12s ease;
+        }
+        .rzp-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(227,166,75,0.35); }
+        .rzp-btn:disabled { opacity: 0.6; cursor: default; }
+        .rzp-error { margin-top: 10px; color: #E2555A; font-size: 11.5px; }
+        .exact-amount-box { background: #171307; border: 1px solid #3A2E1C; border-radius: 10px; padding: 12px; margin-bottom: 12px; text-align: center; }
+        .exact-amount-label { font-size: 10.5px; color: #9AA3B5; margin-bottom: 4px; }
+        .exact-amount-value { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #E3A64B; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .copy-btn-inline { background: none; border: none; color: #E3A64B; cursor: pointer; padding: 2px; }
+        .exact-amount-warn { font-size: 10.5px; color: #9AA3B5; margin-top: 6px; line-height: 1.5; }
+        .waiting-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #9AA3B5; margin-bottom: 10px; }
+        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A64B; animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0; }
+      `}</style>
+      <Ticker tickerData={tickerData} />
+
+      <div className="header">
+        <div className="brand">
+          <button className="menu-btn" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+            <Menu size={20} />
+          </button>
+          <div className="brand-mark">
+            <Zap size={16} strokeWidth={2.6} />
           </div>
-
-          <h2>Choose your plan</h2>
-
-          <p>
-            Upgrade your market intelligence
-            access whenever you're ready.
-          </p>
+          CandleVolt
         </div>
-
-        <div className="plans-grid">
-          {plans.map((plan) => {
-            const isCurrent =
-              currentPlan === plan.key;
-
-            return (
-              <div
-                key={plan.key}
-                className={`plan-card ${
-                  plan.key === "pro"
-                    ? "featured"
-                    : ""
-                } ${
-                  isCurrent
-                    ? "current"
-                    : ""
-                }`}
-              >
-                {plan.key === "pro" && (
-                  <div className="popular-badge">
-                    MOST POPULAR
-                  </div>
-                )}
-
-                <div className="plan-card-head">
-                  <div className="plan-card-name">
-                    {plan.name}
-                  </div>
-
-                  {plan.key !== "free" && (
-                    <Crown size={16} />
-                  )}
-                </div>
-
-                <div className="plan-price">
-                  {plan.price}
-                  <span>
-                    {plan.period}
-                  </span>
-                </div>
-
-                <div className="plan-description">
-                  {plan.description}
-                </div>
-
-                <div className="plan-features">
-                  {plan.features.map(
-                    (feature) => (
-                      <div
-                        className="plan-feature"
-                        key={feature}
-                      >
-                        <Check size={13} />
-                        <span>
-                          {feature}
-                        </span>
-                      </div>
-                    )
-                  )}
-                </div>
-
-                <button
-                  className={
-                    isCurrent
-                      ? "plan-current-btn"
-                      : "gold-btn plan-select-btn"
-                  }
-                  disabled={isCurrent}
-                  onClick={() =>
-                    onSelectPlan(
-                      plan.key
-                    )
-                  }
-                >
-                  {isCurrent
-                    ? "Current Plan"
-                    : plan.key === "free"
-                    ? "Continue Free"
-                    : `Choose ${plan.name}`}
-
-                  {!isCurrent &&
-                    plan.key !== "free" && (
-                      <ChevronRight
-                        size={14}
-                      />
-                    )}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="plans-note">
-          Payments are processed through the
-          available payment methods. Subscription
-          activation is confirmed by the backend.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Payment modal
-// ---------------------------------------------------------------------------
-
-function PaymentModal({
-  plan,
-  onClose,
-  onSuccess,
-}) {
-  const [method, setMethod] =
-    useState("razorpay");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [cryptoOrder, setCryptoOrder] =
-    useState(null);
-
-  const prices = {
-    pro: 999,
-    elite: 2499,
-  };
-
-  const amount =
-    prices[plan] || 999;
-
-  const createRazorpayOrder =
-    async () => {
-      setError("");
-      setLoading(true);
-
-      try {
-        const auth =
-          loadStoredAuth();
-
-        if (!auth?.token) {
-          throw new Error(
-            "Please sign in before purchasing a plan."
-          );
-        }
-
-        const res = await fetch(
-          `${BACKEND_URL}/api/payments/razorpay/order`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              Authorization: `Bearer ${auth.token}`,
-            },
-            body: JSON.stringify({
-              plan,
-            }),
-          }
-        );
-
-        const data =
-          await res.json();
-
-        if (!res.ok) {
-          throw new Error(
-            data?.message ||
-              "Unable to create payment order."
-          );
-        }
-
-        if (
-          typeof window ===
-            "undefined" ||
-          !window.Razorpay
-        ) {
-          throw new Error(
-            "Razorpay checkout is not loaded."
-          );
-        }
-
-        const options = {
-          key:
-            data.key ||
-            data.keyId,
-
-          amount:
-            data.amount ||
-            amount * 100,
-
-          currency:
-            data.currency || "INR",
-
-          name: "CandleVolt",
-
-          description:
-            `${plan.toUpperCase()} subscription`,
-
-          order_id:
-            data.orderId ||
-            data.id,
-
-          handler: async (
-            response
-          ) => {
-            try {
-              const verify =
-                await fetch(
-                  `${BACKEND_URL}/api/payments/razorpay/verify`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type":
-                        "application/json",
-                      Authorization: `Bearer ${auth.token}`,
-                    },
-                    body: JSON.stringify({
-                      plan,
-                      ...response,
-                    }),
-                  }
-                );
-
-              const verifyData =
-                await verify.json();
-
-              if (!verify.ok) {
-                throw new Error(
-                  verifyData?.message ||
-                    "Payment verification failed."
-                );
-              }
-
-              onSuccess(
-                plan,
-                verifyData
-              );
-            } catch (err) {
-              setError(
-                err?.message ||
-                  "Unable to verify payment."
-              );
-            }
-          },
-
-          prefill: {
-            email:
-              auth.email || "",
-          },
-
-          theme: {
-            color: "#E3A64B",
-          },
-
-          modal: {
-            ondismiss: () => {
-              setLoading(false);
-            },
-          },
-        };
-
-        const razorpay =
-          new window.Razorpay(
-            options
-          );
-
-        razorpay.on(
-          "payment.failed",
-          (response) => {
-            setError(
-              response?.error
-                ?.description ||
-                "Payment failed."
-            );
-
-            setLoading(false);
-          }
-        );
-
-        razorpay.open();
-      } catch (err) {
-        setError(
-          err?.message ||
-            "Unable to start payment."
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-  const createCryptoOrder =
-    async () => {
-      setError("");
-      setLoading(true);
-
-      try {
-        const auth =
-          loadStoredAuth();
-
-        if (!auth?.token) {
-          throw new Error(
-            "Please sign in before purchasing a plan."
-          );
-        }
-
-        const res = await fetch(
-          `${BACKEND_URL}/api/payments/crypto/order`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              Authorization: `Bearer ${auth.token}`,
-            },
-            body: JSON.stringify({
-              plan,
-              currency: "USDT",
-              network: "TRC20",
-            }),
-          }
-        );
-
-        const data =
-          await res.json();
-
-        if (!res.ok) {
-          throw new Error(
-            data?.message ||
-              "Unable to create crypto order."
-          );
-        }
-
-        setCryptoOrder(data);
-      } catch (err) {
-        setError(
-          err?.message ||
-            "Unable to create crypto payment."
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-  const startPayment = () => {
-    if (method === "razorpay") {
-      createRazorpayOrder();
-    } else {
-      createCryptoOrder();
-    }
-  };
-
-  return (
-    <div
-      className="modal-backdrop"
-      onClick={onClose}
-    >
-      <div
-        className="payment-modal"
-        onClick={(e) =>
-          e.stopPropagation()
-        }
-      >
-        <button
-          className="modal-close"
-          onClick={onClose}
-        >
-          <X size={17} />
-        </button>
-
-        {!cryptoOrder ? (
-          <>
-            <div className="payment-heading">
-              <div className="eyebrow">
-                CHECKOUT
-              </div>
-
-              <h2>
-                {plan === "elite"
-                  ? "Elite"
-                  : "Pro"}{" "}
-                subscription
-              </h2>
-
-              <div className="checkout-price">
-                ₹{amount}
-                <span>/month</span>
-              </div>
-            </div>
-
-            <div className="payment-methods">
-              <button
-                className={`payment-method ${
-                  method === "razorpay"
-                    ? "active"
-                    : ""
-                }`}
-                onClick={() =>
-                  setMethod(
-                    "razorpay"
-                  )
-                }
-              >
-                <CreditCard
-                  size={17}
-                />
-
-                <div>
-                  <div>
-                    Card / UPI / Netbanking
-                  </div>
-
-                  <small>
-                    Pay securely with Razorpay
-                  </small>
-                </div>
-
-                {method ===
-                  "razorpay" && (
-                  <Check size={14} />
-                )}
-              </button>
-
-              <button
-                className={`payment-method ${
-                  method === "crypto"
-                    ? "active"
-                    : ""
-                }`}
-                onClick={() =>
-                  setMethod("crypto")
-                }
-              >
-                <Wallet size={17} />
-
-                <div>
-                  <div>
-                    USDT
-                  </div>
-
-                  <small>
-                    USDT-TRC20 only
-                  </small>
-                </div>
-
-                {method ===
-                  "crypto" && (
-                  <Check size={14} />
-                )}
-              </button>
-            </div>
-
-            {error && (
-              <div className="payment-error">
-                {error}
-              </div>
+        <div className="header-right">
+          <div className={`live-pill ${connected ? "" : "offline"}`}>
+            {connected ? (
+              <>
+                <span className="live-dot" />
+                LIVE · REAL FEED
+              </>
+            ) : (
+              <>
+                <WifiOff size={11} />
+                BACKEND OFFLINE
+              </>
             )}
-
-            <button
-              className="gold-btn payment-submit"
-              disabled={loading}
-              onClick={startPayment}
-            >
-              {loading
-                ? "Preparing payment…"
-                : `Pay ₹${amount}`}
-
-              <ChevronRight
-                size={14}
-              />
+          </div>
+          {authChecked && auth && (
+            <button className="profile-btn" onClick={() => setView("account")} aria-label="Profile">
+              {auth.profile?.avatar ? (
+                <img src={auth.profile.avatar} className="profile-btn-avatar" alt="" />
+              ) : (
+                <UserCircle size={20} />
+              )}
             </button>
-
-            <div className="payment-secure">
-              <ShieldCheck size={13} />
-
-              Secure payment processing
-            </div>
-          </>
-        ) : (
-          <CryptoPayment
-            order={cryptoOrder}
-            onClose={onClose}
-            onSuccess={onSuccess}
-            plan={plan}
-          />
-        )}
-      </div>
-    </div>
-  );
-                  }
-function CryptoPayment({
-  order,
-  onClose,
-  onSuccess,
-  plan,
-}) {
-  const [copied, setCopied] =
-    useState(false);
-
-  const [status, setStatus] =
-    useState("pending");
-
-  const [error, setError] =
-    useState("");
-
-  const address =
-    order?.address ||
-    order?.walletAddress ||
-    "";
-
-  const amount =
-    order?.amount ||
-    order?.cryptoAmount ||
-    "";
-
-  const currency =
-    order?.currency ||
-    "USDT";
-
-  const network =
-    order?.network ||
-    "TRC20";
-
-  const orderId =
-    order?.orderId ||
-    order?.id ||
-    "";
-
-  const copyAddress = async () => {
-    if (!address) return;
-
-    try {
-      await navigator.clipboard.writeText(
-        address
-      );
-
-      setCopied(true);
-
-      setTimeout(
-        () => setCopied(false),
-        1800
-      );
-    } catch {
-      // clipboard unavailable
-    }
-  };
-
-  useEffect(() => {
-    if (!orderId) return;
-
-    let cancelled = false;
-
-    const checkStatus = async () => {
-      try {
-        const auth =
-          loadStoredAuth();
-
-        if (!auth?.token) return;
-
-        const res = await fetch(
-          `${BACKEND_URL}/api/payments/crypto/status/${encodeURIComponent(
-            orderId
-          )}`,
-          {
-            headers: {
-              Authorization: `Bearer ${auth.token}`,
-            },
-          }
-        );
-
-        if (!res.ok) return;
-
-        const data =
-          await res.json();
-
-        if (cancelled) return;
-
-        const nextStatus = String(
-          data?.status ||
-            data?.paymentStatus ||
-            "pending"
-        ).toLowerCase();
-
-        setStatus(nextStatus);
-
-        if (
-          nextStatus === "paid" ||
-          nextStatus === "confirmed" ||
-          nextStatus === "success" ||
-          nextStatus === "completed"
-        ) {
-          onSuccess(
-            plan,
-            data
-          );
-        }
-      } catch {
-        // keep polling
-      }
-    };
-
-    checkStatus();
-
-    const id = setInterval(
-      checkStatus,
-      5000
-    );
-
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [orderId, plan, onSuccess]);
-
-  return (
-    <div className="crypto-payment">
-      <div className="payment-heading">
-        <div className="eyebrow">
-          CRYPTO CHECKOUT
-        </div>
-
-        <h2>
-          Pay with {currency}
-        </h2>
-
-        <p>
-          Send the exact amount to the
-          wallet below using the specified
-          network.
-        </p>
-      </div>
-
-      <div className="crypto-network">
-        <span>Network</span>
-
-        <strong>
-          {network}
-        </strong>
-      </div>
-
-      <div className="crypto-amount">
-        <div className="crypto-amount-label">
-          Amount to send
-        </div>
-
-        <div className="crypto-amount-value">
-          {amount} {currency}
-        </div>
-      </div>
-
-      {order?.qrCode ||
-      order?.qr ||
-      order?.qrCodeUrl ? (
-        <div className="qr-wrap">
-          <img
-            src={
-              order.qrCode ||
-              order.qr ||
-              order.qrCodeUrl
-            }
-            alt="Crypto payment QR code"
-          />
-        </div>
-      ) : (
-        <div className="qr-placeholder">
-          <QrCode size={34} />
-
-          <span>
-            QR code unavailable
-          </span>
-        </div>
-      )}
-
-      <div className="wallet-label">
-        Wallet address
-      </div>
-
-      <div className="wallet-box">
-        <span>
-          {address || "Wallet address unavailable"}
-        </span>
-
-        <button
-          onClick={copyAddress}
-          disabled={!address}
-          title="Copy wallet address"
-        >
-          {copied ? (
-            <Check size={15} />
-          ) : (
-            <Copy size={15} />
           )}
-        </button>
+        </div>
       </div>
 
-      {error && (
-        <div className="payment-error">
-          {error}
-        </div>
-      )}
-
-      <div
-        className={`crypto-status ${
-          status
-        }`}
-      >
-        {status === "paid" ||
-        status === "confirmed" ||
-        status === "success" ||
-        status === "completed" ? (
-          <>
-            <Check size={15} />
-            Payment confirmed
-          </>
-        ) : (
-          <>
-            <Radio size={15} />
-            Waiting for payment confirmation…
-          </>
+      <div className="container">
+        {!connected && (
+          <div className="offline-banner">
+            <WifiOff size={14} />
+            Can't reach the CandleVolt backend at {BACKEND_URL}. Start it with
+            <code style={{ margin: "0 4px" }}>npm start</code> in candlevolt-backend/,
+            or update BACKEND_URL in this file to your deployed URL.
+          </div>
         )}
-      </div>
-
-      <div className="crypto-warning">
-        <ShieldCheck size={13} />
-
-        Send only {currency} on the{" "}
-        {network} network. Sending assets
-        through another network may result in
-        permanent loss.
-      </div>
-
-      <button
-        className="guest-btn"
-        onClick={onClose}
-      >
-        Close
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// App shell
-// ---------------------------------------------------------------------------
-
-function AppShell({
-  user,
-  plan,
-  onLogout,
-  onUpgrade,
-}) {
-  const [activeView, setActiveView] =
-    useState("dashboard");
-
-  const [menuOpen, setMenuOpen] =
-    useState(false);
-
-  const [market, setMarket] =
-    useState("crypto");
-
-  const [selectedAsset, setSelectedAsset] =
-    useState(
-      ASSETS.crypto?.[0]?.symbol ||
-        ""
-    );
-
-  const {
-    marketData,
-    backendOnline,
-    lastUpdate,
-  } = useMarketData();
-
-  const {
-    signals,
-  } = useSignals();
-
-  const tickerData =
-    buildTickerData(marketData);
-
-  const handleView = (view) => {
-    setActiveView(view);
-  };
-
-  return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-left">
-          <button
-            className="menu-btn"
-            onClick={() =>
-              setMenuOpen(true)
-            }
-            aria-label="Open menu"
-          >
-            <Menu size={18} />
-          </button>
-
-          <button
-            className="top-brand"
-            onClick={() =>
-              handleView(
-                "dashboard"
-              )
-            }
-          >
-            <span className="brand-mark">
-              <Zap size={15} />
-            </span>
-
-            <span>
-              CandleVolt
-            </span>
-          </button>
+        {view === "dashboard" && (
+          <>
+        <div className="market-tabs">
+          {Object.keys(ASSETS).map((key) => (
+            <button
+              key={key}
+              className={`tab-btn ${market === key ? "active" : ""}`}
+              onClick={() => {
+                setMarket(key);
+                setSelected(ASSETS[key][0].symbol);
+              }}
+            >
+              {MARKET_LABELS[key]}
+            </button>
+          ))}
         </div>
 
-        <div className="topbar-right">
-          <div className="connection-status">
-            <span
-              className={
-                backendOnline
-                  ? "status-dot online"
-                  : "status-dot offline"
-              }
-            />
-
-            {backendOnline
-              ? "LIVE"
-              : "OFFLINE"}
+        <div className="layout">
+          {/* LEFT: asset watchlist + hero chart */}
+          <div className="panel">
+            <div className="panel-title">Watchlist</div>
+            {visibleAssets.map((a) => {
+              const arr = series[a.symbol];
+              const price = arr[arr.length - 1];
+              const prev = arr[0];
+              const up = price >= prev;
+              return (
+                <div
+                  key={a.symbol}
+                  className={`asset-row ${selected === a.symbol ? "selected" : ""}`}
+                  onClick={() => setSelected(a.symbol)}
+                >
+                  <div className="asset-info">
+                    <span className="asset-sym">{a.symbol}</span>
+                    <span className="asset-price">{fmtPrice(price, a.symbol)}</span>
+                  </div>
+                  <div className="asset-chart">
+                    <Sparkline data={arr} positive={up} />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="chart-hero">
+              <div className="chart-hero-head">
+                <span className="chart-hero-sym">{selected}</span>
+                <span className="chart-hero-price">
+                  {fmtPrice(
+                    (series[selected] || [])[((series[selected] || []).length || 1) - 1],
+                    selected
+                  )}
+                </span>
+              </div>
+              {market === "crypto" || market === "meme" ? (
+                <>
+                  <TimeframeBar value={dashboardTf} onChange={setDashboardTf} />
+                  <CandlestickChart symbol={selected} interval={dashboardTf} />
+                </>
+              ) : (
+                <ResponsiveContainer width="100%" height={140}>
+                  <LineChart data={(series[selected] || []).map((v, i) => ({ i, v }))}>
+                    <YAxis domain={["dataMin", "dataMax"]} hide />
+                    <Line
+                      type="monotone"
+                      dataKey="v"
+                      stroke="#E3A64B"
+                      strokeWidth={1.8}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+              {market !== "crypto" && market !== "meme" && (
+                <div className="chart-note">
+                  Line chart — full candlesticks need a paid forex/commodities
+                  data plan (free tier only gives the latest price, not OHLC).
+                </div>
+              )}
+            </div>
           </div>
 
-          {lastUpdate && (
-            <div className="last-update">
-              {timeAgo(lastUpdate)}
+          {/* RIGHT: signal feed */}
+          <div className="panel">
+            <div className="panel-title">
+              <Radio size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+              Signal Feed — {MARKET_LABELS[market]}
+              {isFree && (
+                <span style={{ color: "#5C6478", fontWeight: 400, textTransform: "none", marginLeft: 8 }}>
+                  (Free plan — delayed 2–3 min)
+                </span>
+              )}
             </div>
-          )}
-
-          <button
-            className="top-account"
-            onClick={() =>
-              handleView(
-                "account"
-              )
-            }
-          >
-            <UserCircle size={18} />
-
-            <span className="top-plan">
-              {String(plan)
-                .toUpperCase()}
-            </span>
-          </button>
+            <div className="sig-feed">
+              {signals.length === 0 && (
+                <div className="empty-state">
+                  {connected
+                    ? `Scanning ${visibleAssets.map((a) => a.symbol).join(", ")} for real crossovers — signals appear here the moment one fires.`
+                    : "Waiting for the backend to connect before showing real signals."}
+                </div>
+              )}
+              {signals.map((sig) => (
+                <SignalCard key={sig.id} sig={sig} locked={false} remainingMs={0} />
+              ))}
+            </div>
+          </div>
         </div>
-      </header>
+          </>
+        )}
+        {view === "chart" && <ChartView />}
+        {view === "news" && <NewsView />}
+        {view === "calendar" && <CalendarView />}
+        {view === "analysis" && <AnalysisView />}
+        {view === "account" && (
+          <AccountView
+            auth={auth}
+            onLogout={handleLogout}
+            onShowAuth={() => setShowAuthModal(true)}
+            onProfileSaved={handleProfileSaved}
+            plans={plans}
+            currentPlan={currentPlan}
+            onSubscribe={(p) => setPayingPlan(p)}
+          />
+        )}
+      </div>
+
+      {payingPlan && (
+        <PaymentModal
+          plan={payingPlan}
+          sessionId={effectiveUserId}
+          onClose={() => setPayingPlan(null)}
+          onActivated={(planName) => {
+            setAuth((prev) => (prev ? { ...prev, plan: planName } : prev));
+            setPayingPlan(null);
+          }}
+        />
+      )}
+
+      {showAuthModal && (
+        <AuthModal onAuthenticated={handleAuthenticated} onClose={() => setShowAuthModal(false)} />
+      )}
 
       <SideMenu
         open={menuOpen}
-        activeView={activeView}
-        onSelect={handleView}
-        onClose={() =>
-          setMenuOpen(false)
-        }
+        activeView={view}
+        onSelect={setView}
+        onClose={() => setMenuOpen(false)}
       />
-
-      <main className="main-content">
-        {activeView ===
-          "dashboard" && (
-          <DashboardView
-            market={market}
-            setMarket={setMarket}
-            tickerData={tickerData}
-            signals={signals}
-            plan={plan}
-            onUpgrade={onUpgrade}
-          />
-        )}
-
-        {activeView === "chart" && (
-          <ChartView
-            market={market}
-            selectedAsset={
-              selectedAsset
-            }
-            onAssetChange={
-              setSelectedAsset
-            }
-          />
-        )}
-
-        {activeView === "news" && (
-          <div className="view-wrap">
-            <div className="view-head">
-              <div>
-                <div className="eyebrow">
-                  LIVE HEADLINES
-                </div>
-
-                <h2>
-                  Market News
-                </h2>
-
-                <p className="view-sub">
-                  Latest headlines across
-                  the markets.
-                </p>
-              </div>
-            </div>
-
-            <NewsPanel
-              market={market}
-            />
-          </div>
-        )}
-
-        {activeView ===
-          "calendar" && (
-          <CalendarView />
-        )}
-
-        {activeView ===
-          "analysis" && (
-          <AnalysisView />
-        )}
-
-        {activeView ===
-          "account" && (
-          <AccountView
-            user={user}
-            plan={plan}
-            onLogout={onLogout}
-            onUpgrade={onUpgrade}
-          />
-        )}
-      </main>
     </div>
   );
-            }
-function App() {
-  const [auth, setAuth] =
-    useState(() => loadStoredAuth());
-
-  const [user, setUser] =
-    useState(null);
-
-  const [plan, setPlan] =
-    useState("free");
-
-  const [showPlans, setShowPlans] =
-    useState(false);
-
-  const [paymentPlan, setPaymentPlan] =
-    useState(null);
-
-  const [loadingUser, setLoadingUser] =
-    useState(Boolean(auth));
-
-  // ---------------------------------------------------------
-  // Load the authenticated user's profile
-  // ---------------------------------------------------------
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadUser = async () => {
-      if (!auth?.token) {
-        setLoadingUser(false);
-        return;
-      }
-
-      try {
-        const res = await fetch(
-          `${BACKEND_URL}/api/me`,
-          {
-            headers: {
-              Authorization: `Bearer ${auth.token}`,
-            },
-          }
-        );
-
-        if (!res.ok) {
-          throw new Error(
-            "Authentication expired."
-          );
-        }
-
-        const data =
-          await res.json();
-
-        if (cancelled) return;
-
-        const nextUser =
-          data?.user ||
-          data;
-
-        setUser(nextUser);
-
-        const nextPlan =
-          nextUser?.plan ||
-          data?.plan ||
-          "free";
-
-        setPlan(
-          String(nextPlan).toLowerCase()
-        );
-      } catch {
-        if (cancelled) return;
-
-        clearStoredAuth();
-        setAuth(null);
-        setUser(null);
-        setPlan("free");
-      } finally {
-        if (!cancelled) {
-          setLoadingUser(false);
-        }
-      }
-    };
-
-    loadUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [auth]);
-
-  // ---------------------------------------------------------
-  // Login
-  // ---------------------------------------------------------
-
-  const handleLogin = useCallback(
-    (nextAuth) => {
-      saveStoredAuth(nextAuth);
-
-      setAuth({
-        token: nextAuth.token,
-        userId: nextAuth.userId,
-        email: nextAuth.email,
-      });
-
-      setUser(
-        nextAuth.user ||
-          {
-            id: nextAuth.userId,
-            email: nextAuth.email,
-          }
-      );
-
-      setPlan(
-        String(
-          nextAuth?.user?.plan ||
-            "free"
-        ).toLowerCase()
-      );
-    },
-    []
-  );
-
-  // ---------------------------------------------------------
-  // Logout
-  // ---------------------------------------------------------
-
-  const handleLogout = useCallback(() => {
-    clearStoredAuth();
-
-    setAuth(null);
-    setUser(null);
-    setPlan("free");
-    setShowPlans(false);
-    setPaymentPlan(null);
-  }, []);
-
-  // ---------------------------------------------------------
-  // Open subscription plans
-  // ---------------------------------------------------------
-
-  const handleUpgrade = useCallback(() => {
-    setShowPlans(true);
-  }, []);
-
-  // ---------------------------------------------------------
-  // Select subscription plan
-  // ---------------------------------------------------------
-
-  const handleSelectPlan =
-    useCallback(
-      (selectedPlan) => {
-        if (
-          selectedPlan ===
-          "free"
-        ) {
-          setShowPlans(false);
-          return;
-        }
-
-        if (!auth?.token) {
-          setShowPlans(false);
-          return;
-        }
-
-        setShowPlans(false);
-        setPaymentPlan(
-          selectedPlan
-        );
-      },
-      [auth]
-    );
-
-  // ---------------------------------------------------------
-  // Payment success
-  // ---------------------------------------------------------
-
-  const handlePaymentSuccess =
-    useCallback(
-      async (
-        purchasedPlan,
-        paymentData
-      ) => {
-        setPaymentPlan(null);
-
-        setPlan(
-          String(
-            purchasedPlan
-          ).toLowerCase()
-        );
-
-        try {
-          const stored =
-            loadStoredAuth();
-
-          if (!stored?.token) {
-            return;
-          }
-
-          const res = await fetch(
-            `${BACKEND_URL}/api/me`,
-            {
-              headers: {
-                Authorization: `Bearer ${stored.token}`,
-              },
-            }
-          );
-
-          if (!res.ok) return;
-
-          const data =
-            await res.json();
-
-          const nextUser =
-            data?.user ||
-            data;
-
-          if (nextUser) {
-            setUser(nextUser);
-
-            setPlan(
-              String(
-                nextUser.plan ||
-                  purchasedPlan
-              ).toLowerCase()
-            );
-          }
-        } catch {
-          // Payment was already confirmed.
-          // Keep the selected plan locally.
-        }
-      },
-      []
-    );
-
-  // ---------------------------------------------------------
-  // Loading state
-  // ---------------------------------------------------------
-
-  if (loadingUser) {
-    return (
-      <div className="boot-screen">
-        <div className="boot-brand">
-          <div className="brand-mark large">
-            <Zap size={20} />
-          </div>
-
-          <div>
-            <div className="boot-title">
-              CandleVolt
-            </div>
-
-            <div className="boot-sub">
-              Loading market terminal…
-            </div>
-          </div>
-        </div>
-
-        <div className="boot-loader">
-          <span />
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Authentication gate
-  // ---------------------------------------------------------
-
-  if (!auth?.token) {
-    return (
-      <LoginView
-        onLogin={handleLogin}
-        onGuest={() => {
-          setAuth({
-            token: "guest",
-            userId: "guest",
-            email: "",
-          });
-
-          setUser({
-            id: "guest",
-            email: "",
-            name: "Guest",
-            plan: "free",
-          });
-
-          setPlan("free");
-        }}
-      />
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Main application
-  // ---------------------------------------------------------
-
-  return (
-    <>
-      <AppShell
-        user={user}
-        plan={plan}
-        onLogout={handleLogout}
-        onUpgrade={handleUpgrade}
-      />
-
-      {showPlans && (
-        <PlansModal
-          currentPlan={plan}
-          onClose={() =>
-            setShowPlans(false)
-          }
-          onSelectPlan={
-            handleSelectPlan
-          }
-        />
-      )}
-
-      {paymentPlan && (
-        <PaymentModal
-          plan={paymentPlan}
-          onClose={() =>
-            setPaymentPlan(null)
-          }
-          onSuccess={
-            handlePaymentSuccess
-          }
-        />
-      )}
-    </>
-  );
 }
-
-export default App;
-/* CandleVolt.css */
-
-:root {
-  --bg-void: #0a0d12;
-  --bg-panel: #12161f;
-  --bg-raised: #1a2030;
-  --line: #232a3b;
-
-  --gold: #e3a64b;
-  --rose: #e2555a;
-
-  --text-hi: #edeff3;
-  --text-mid: #9aa3b5;
-  --text-lo: #5c6478;
-
-  --radius: 10px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  margin: 0;
-  min-height: 100%;
-  width: 100%;
-}
-
-body {
-  background: var(--bg-void);
-  color: var(--text-hi);
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* ---------------------------------------------------------
-   Generic
---------------------------------------------------------- */
-
-.panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.view-wrap {
-  width: 100%;
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 28px;
-}
-
-.view-head,
-.dashboard-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
-.eyebrow,
-.section-kicker,
-.analysis-label {
-  color: var(--text-lo);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-h1,
-h2,
-h3,
-p {
-  margin-top: 0;
-}
-
-.view-head h2,
-.dashboard-top h2 {
-  margin: 5px 0 6px;
-  font-size: 26px;
-  letter-spacing: -0.03em;
-}
-
-.view-sub {
-  margin: 0;
-  color: var(--text-mid);
-  font-size: 13px;
-}
-
-/* ---------------------------------------------------------
-   Brand
---------------------------------------------------------- */
-
-.brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgba(227, 166, 75, 0.35);
-  border-radius: 8px;
-  color: var(--gold);
-  background: rgba(227, 166, 75, 0.08);
-}
-
-.brand-mark.large {
-  width: 42px;
-  height: 42px;
-}
-
-.brand-name {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-/* ---------------------------------------------------------
-   Topbar
---------------------------------------------------------- */
-
-.app-shell {
-  min-height: 100vh;
-  background: var(--bg-void);
-}
-
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  height: 58px;
-  padding: 0 20px;
-
-  background: rgba(10, 13, 18, 0.96);
-  border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(12px);
-}
-
-.topbar-left,
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.top-brand,
-.top-account,
-.menu-btn {
-  border: 0;
-  background: transparent;
-  color: var(--text-hi);
-}
-
-.top-brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-weight: 700;
-}
-
-.menu-btn {
-  display: inline-flex;
-  padding: 7px;
-  color: var(--text-mid);
-}
-
-.menu-btn:hover,
-.top-account:hover {
-  color: var(--text-hi);
-}
-
-.top-account {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.top-plan {
-  color: var(--gold);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.connection-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-mid);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.status-dot,
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.status-dot.online,
-.live-dot {
-  background: var(--gold);
-  box-shadow: 0 0 10px rgba(227, 166, 75, 0.55);
-}
-
-.status-dot.offline {
-  background: var(--rose);
-}
-
-.last-update {
-  color: var(--text-lo);
-  font-size: 10px;
-}
-
-/* ---------------------------------------------------------
-   Side menu
---------------------------------------------------------- */
-
-.menu-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-
-  background: rgba(0, 0, 0, 0.45);
-
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.menu-scrim-open {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.side-menu {
-  position: fixed;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  z-index: 90;
-
-  width: 250px;
-  padding: 20px;
-
-  background: #0f131b;
-  border-right: 1px solid var(--line);
-
-  transform: translateX(-100%);
-  transition: transform 0.22s ease;
-}
-
-.side-menu-open {
-  transform: translateX(0);
-}
-
-.side-menu-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  padding-bottom: 24px;
-
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.side-menu-items {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.side-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-
-  width: 100%;
-  padding: 11px 12px;
-
-  border: 1px solid transparent;
-  border-radius: 7px;
-
-  background: transparent;
-  color: var(--text-mid);
-
-  text-align: left;
-  font-size: 12px;
-}
-
-.side-menu-item:hover,
-.side-menu-item.active {
-  background: var(--bg-raised);
-  border-color: var(--line);
-  color: var(--text-hi);
-}
-
-.side-menu-item.active {
-  color: var(--gold);
-}
-
-/* ---------------------------------------------------------
-   Ticker
---------------------------------------------------------- */
-
-.ticker-wrap {
-  overflow: hidden;
-  width: 100%;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: #0d1017;
-}
-
-.ticker-track {
-  display: flex;
-  width: max-content;
-  animation: tickerMove 42s linear infinite;
-}
-
-.ticker-item {
-  display: flex;
-  gap: 8px;
-  padding: 10px 24px;
-
-  border-right: 1px solid var(--line);
-
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-
-  font-size: 10px;
-}
-
-.ticker-sym {
-  color: var(--text-mid);
-}
-
-.ticker-up {
-  color: var(--gold);
-}
-
-.ticker-down {
-  color: var(--rose);
-}
-
-@keyframes tickerMove {
-  from {
-    transform: translateX(0);
-  }
-
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-/* ---------------------------------------------------------
-   Market tabs
---------------------------------------------------------- */
-
-.market-tabs,
-.impact-tabs {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-
-.market-tab,
-.impact-btn,
-.tf-btn {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  background: var(--bg-panel);
-  color: var(--text-mid);
-
-  padding: 7px 10px;
-  font-size: 10px;
-}
-
-.market-tab:hover,
-.market-tab.active,
-.impact-btn:hover,
-.impact-btn.active,
-.tf-btn:hover,
-.tf-btn.active {
-  color: var(--gold);
-  border-color: rgba(227, 166, 75, 0.35);
-  background: rgba(227, 166, 75, 0.06);
-}
-
-/* ---------------------------------------------------------
-   Dashboard
---------------------------------------------------------- */
-
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
-  gap: 20px;
-}
-
-.dashboard-main {
-  min-width: 0;
-}
-
-.dashboard-side {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  margin: 24px 0 12px;
-}
-
-.section-head h3 {
-  margin: 4px 0 0;
-  font-size: 16px;
-}
-
-.live-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--gold);
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.asset-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.asset-card {
-  min-width: 0;
-  padding: 14px;
-
-  border: 1px solid var(--line);
-  border-radius: 9px;
-
-  background: var(--bg-panel);
-  color: var(--text-hi);
-
-  text-align: left;
-}
-
-.asset-card:hover,
-.asset-card.selected {
-  border-color: rgba(227, 166, 75, 0.4);
-  background: #151a24;
-}
-
-.asset-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.asset-symbol {
-  overflow: hidden;
-  color: var(--text-mid);
-  font-size: 10px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.asset-price {
-  margin: 8px 0 4px;
-
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.pct-up,
-.sig-val-up {
-  color: var(--gold);
-}
-
-.pct-down,
-.sig-val-down {
-  color: var(--rose);
-}
-
-/* ---------------------------------------------------------
-   Signals
---------------------------------------------------------- */
-
-.signals-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.sig-card {
-  position: relative;
-  min-width: 0;
-
-  padding: 14px;
-
-  border: 1px solid var(--line);
-  border-radius: 9px;
-
-  background: var(--bg-panel);
-}
-
-.sig-buy {
-  border-left: 2px solid var(--gold);
-}
-
-.sig-sell {
-  border-left: 2px solid var(--rose);
-}
-
-.sig-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.sig-dir {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.sig-buy .sig-dir {
-  color: var(--gold);
-}
-
-.sig-sell .sig-dir {
-  color: var(--rose);
-}
-
-.sig-market {
-  color: var(--text-lo);
-  font-size: 8px;
-  letter-spacing: 0.08em;
-}
-
-.sig-symbol {
-  margin: 13px 0;
-
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.sig-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.sig-label {
-  margin-bottom: 4px;
-  color: var(--text-lo);
-  font-size: 8px;
-  text-transform: uppercase;
-}
-
-.sig-val {
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-  font-size: 11px;
-}
-
-.sig-conf-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.sig-conf-track {
-  flex: 1;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: #252b38;
-}
-
-.sig-conf-fill {
-  height: 100%;
-}
-
-.sig-conf-num {
-  color: var(--text-mid);
-  font-size: 9px;
-}
-
-.sig-foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-
-  margin-top: 12px;
-
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-.sig-time {
-  white-space: nowrap;
-}
-
-.sig-locked {
-  overflow: hidden;
-}
-
-.blurred {
-  filter: blur(4px);
-  user-select: none;
-}
-
-.lock-overlay {
-  position: absolute;
-  inset: 0;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-
-  background: rgba(10, 13, 18, 0.72);
-
-  color: var(--gold);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.lock-sub {
-  color: var(--text-mid);
-  font-size: 8px;
-  font-weight: 400;
-}
-
-.empty-signals {
-  grid-column: 1 / -1;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-
-  padding: 30px;
-
-  color: var(--text-mid);
-  font-size: 11px;
-}
-
-/* ---------------------------------------------------------
-   News
---------------------------------------------------------- */
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-
-  padding: 14px;
-
-  border-bottom: 1px solid var(--line);
-
-  color: var(--text-hi);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.news-feed {
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.news-item {
-  display: block;
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(35, 42, 59, 0.65);
-}
-
-.news-item:hover {
-  background: var(--bg-raised);
-}
-
-.news-title {
-  color: var(--text-hi);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.news-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 7px;
-
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-.news-source {
-  color: var(--gold);
-}
-
-.empty-state {
-  padding: 25px;
-  color: var(--text-lo);
-  font-size: 11px;
-  text-align: center;
-}
-
-/* ---------------------------------------------------------
-   Upgrade
---------------------------------------------------------- */
-
-.upgrade-panel {
-  padding: 18px;
-}
-
-.upgrade-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 34px;
-  height: 34px;
-  margin-bottom: 12px;
-
-  border-radius: 8px;
-  background: rgba(227, 166, 75, 0.08);
-  color: var(--gold);
-}
-
-.upgrade-title {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.upgrade-text {
-  margin: 7px 0 15px;
-
-  color: var(--text-mid);
-  font-size: 10px;
-  line-height: 1.55;
-}
-
-.gold-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-
-  border: 1px solid rgba(227, 166, 75, 0.5);
-  border-radius: 6px;
-
-  padding: 9px 13px;
-
-  background: var(--gold);
-  color: #111;
-
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.gold-btn:hover {
-  filter: brightness(1.08);
-}
-
-/* ---------------------------------------------------------
-   Chart
---------------------------------------------------------- */
-
-.chart-panel {
-  overflow: hidden;
-}
-
-.chart-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-
-  padding: 12px 14px;
-
-  border-bottom: 1px solid var(--line);
-}
-
-.chart-symbol {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-
-  color: var(--text-hi);
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.tf-bar {
-  display: flex;
-  gap: 4px;
-}
-
-.candle-chart-box {
-  width: 100%;
-}
-
-.asset-select {
-  min-width: 130px;
-
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  padding: 8px 10px;
-
-  background: var(--bg-panel);
-  color: var(--text-hi);
-
-  font-size: 10px;
-}
-
-/* ---------------------------------------------------------
-   Calendar
---------------------------------------------------------- */
-
-.calendar-panel {
-  overflow: hidden;
-}
-
-.calendar-head,
-.calendar-row {
-  display: grid;
-  grid-template-columns:
-    minmax(180px, 2fr)
-    minmax(130px, 1fr)
-    90px
-    100px
-    100px
-    100px;
-
-  align-items: center;
-  gap: 10px;
-}
-
-.calendar-head {
-  padding: 11px 14px;
-
-  border-bottom: 1px solid var(--line);
-
-  color: var(--text-lo);
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.calendar-row {
-  min-height: 65px;
-  padding: 10px 14px;
-
-  border-bottom: 1px solid rgba(35, 42, 59, 0.65);
-}
-
-.calendar-event {
-  min-width: 0;
-}
-
-.calendar-country {
-  margin-bottom: 3px;
-  color: var(--gold);
-  font-size: 8px;
-  font-weight: 700;
-}
-
-.calendar-title {
-  overflow: hidden;
-  color: var(--text-hi);
-  font-size: 10px;
-  text-overflow: ellipsis;
-}
-
-.calendar-time,
-.calendar-value {
-  color: var(--text-mid);
-  font-size: 9px;
-}
-
-.calendar-value.actual {
-  color: var(--text-hi);
-  font-weight: 700;
-}
-
-.impact-pill {
-  display: inline-block;
-
-  padding: 4px 7px;
-
-  border-radius: 5px;
-
-  font-size: 7px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.impact-high {
-  background: rgba(226, 85, 90, 0.12);
-  color: var(--rose);
-}
-
-.impact-medium {
-  background: rgba(227, 166, 75, 0.12);
-  color: var(--gold);
-}
-
-.impact-low {
-  background: rgba(154, 163, 181, 0.1);
-  color: var(--text-mid);
-}
-
-.calendar-empty {
-  padding: 50px;
-}
-
-/* ---------------------------------------------------------
-   Analysis
---------------------------------------------------------- */
-
-.analysis-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 16px;
-}
-
-.analysis-main,
-.analysis-side {
-  padding: 20px;
-}
-
-.analysis-main h3 {
-  margin: 8px 0 14px;
-  font-size: 20px;
-}
-
-.analysis-text {
-  color: var(--text-mid);
-  font-size: 12px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.analysis-highlights {
-  margin-top: 20px;
-}
-
-.analysis-highlight {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-
-  padding: 10px 0;
-
-  border-top: 1px solid var(--line);
-
-  color: var(--text-mid);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.analysis-dot {
-  flex: 0 0 auto;
-  color: var(--gold);
-}
-
-.analysis-bias {
-  margin: 8px 0 25px;
-
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.analysis-bias.bullish,
-.analysis-bias.buy {
-  color: var(--gold);
-}
-
-.analysis-bias.bearish,
-.analysis-bias.sell {
-  color: var(--rose);
-}
-
-.analysis-bias.neutral {
-  color: var(--text-mid);
-}
-
-.analysis-risk {
-  color: var(--text-mid);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.analysis-updated {
-  margin-top: 25px;
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-.analysis-loading,
-.analysis-empty {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 30px;
-  color: var(--text-mid);
-}
-
-.analysis-empty-title {
-  color: var(--text-hi);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.analysis-empty-sub {
-  margin-top: 4px;
-  color: var(--text-lo);
-  font-size: 9px;
-}
-
-.analysis-disclaimer {
-  margin-top: 12px;
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-/* ---------------------------------------------------------
-   Account
---------------------------------------------------------- */
-
-.account-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
-  gap: 18px;
-}
-
-.profile-panel {
-  padding: 20px;
-}
-
-.profile-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-
-  padding-bottom: 20px;
-  margin-bottom: 20px;
-
-  border-bottom: 1px solid var(--line);
-}
-
-.avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 44px;
-  height: 44px;
-
-  border-radius: 50%;
-
-  background: var(--bg-raised);
-  color: var(--gold);
-
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.profile-name {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.profile-email {
-  margin-top: 4px;
-  color: var(--text-lo);
-  font-size: 9px;
-}
-
-.profile-form {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-field:last-of-type {
-  grid-column: 1 / -1;
-}
-
-.form-field label {
-  color: var(--text-lo);
-  font-size: 9px;
-}
-
-.form-field input,
-.form-field textarea,
-.auth-form input {
-  width: 100%;
-
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  outline: none;
-
-  padding: 10px;
-
-  background: #0e1219;
-  color: var(--text-hi);
-
-  font-size: 11px;
-}
-
-.form-field input:focus,
-.form-field textarea:focus,
-.auth-form input:focus {
-  border-color: rgba(227, 166, 75, 0.45);
-}
-
-.form-field textarea {
-  resize: vertical;
-}
-
-.profile-actions {
-  grid-column: 1 / -1;
-}
-
-.account-side {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.plan-panel,
-.security-panel {
-  padding: 17px;
-}
-
-.plan-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.plan-name {
-  margin-top: 6px;
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.plan-icon {
-  color: var(--gold);
-}
-
-.plan-status {
-  margin: 8px 0 15px;
-  color: var(--text-mid);
-  font-size: 10px;
-}
-
-.security-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-
-  padding: 10px 0;
-
-  border-bottom: 1px solid var(--line);
-
-  color: var(--text-mid);
-  font-size: 10px;
-}
-
-.security-good {
-  color: var(--gold);
-}
-
-.logout-btn {
-  border: 1px solid rgba(226, 85, 90, 0.3);
-  border-radius: 6px;
-
-  padding: 10px;
-
-  background: transparent;
-  color: var(--rose);
-
-  font-size: 10px;
-}
-
-/* ---------------------------------------------------------
-   Auth
---------------------------------------------------------- */
-
-.auth-page {
-  position: relative;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  min-height: 100vh;
-  padding: 20px;
-
-  background: var(--bg-void);
-}
-
-.auth-glow {
-  position: fixed;
-  width: 500px;
-  height: 500px;
-
-  border-radius: 50%;
-
-  background: rgba(227, 166, 75, 0.04);
-
-  filter: blur(80px);
-  pointer-events: none;
-}
-
-.auth-card {
-  position: relative;
-  z-index: 1;
-
-  width: min(420px, 100%);
-  padding: 32px;
-
-  border: 1px solid var(--line);
-  border-radius: 12px;
-
-  background: var(--bg-panel);
-  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.35);
-}
-
-.auth-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  margin-bottom: 35px;
-}
-
-.auth-eyebrow {
-  color: var(--gold);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
-.auth-card h1 {
-  margin: 7px 0 8px;
-  font-size: 25px;
-}
-
-.auth-sub {
-  color: var(--text-mid);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 22px;
-}
-
-.auth-form label {
-  color: var(--text-mid);
-  font-size: 9px;
-}
-
-.auth-submit {
-  width: 100%;
-  margin-top: 7px;
-}
-
-.auth-error,
-.payment-error {
-  padding: 9px;
-
-  border: 1px solid rgba(226, 85, 90, 0.25);
-  border-radius: 5px;
-
-  background: rgba(226, 85, 90, 0.06);
-  color: var(--rose);
-
-  font-size: 9px;
-}
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  margin: 22px 0;
-
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-.auth-divider span {
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-
-.guest-btn,
-.text-btn {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  padding: 9px;
-
-  background: transparent;
-  color: var(--text-mid);
-
-  font-size: 10px;
-}
-
-.guest-btn {
-  width: 100%;
-}
-
-.guest-btn:hover,
-.text-btn:hover {
-  color: var(--text-hi);
-  background: var(--bg-raised);
-}
-
-.text-btn {
-  border: 0;
-  padding: 7px;
-}
-.auth-note {
-  margin-top: 18px;
-  color: var(--text-lo);
-  font-size: 8px;
-  line-height: 1.5;
-  text-align: center;
-}
-
-/* ---------------------------------------------------------
-   Modals
---------------------------------------------------------- */
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  padding: 20px;
-
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(5px);
-}
-
-.modal,
-.plans-modal,
-.payment-modal {
-  position: relative;
-
-  width: min(430px, 100%);
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-
-  padding: 25px;
-
-  border: 1px solid var(--line);
-  border-radius: 12px;
-
-  background: var(--bg-panel);
-  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.5);
-}
-
-.plans-modal {
-  width: min(1050px, 100%);
-}
-
-.modal-close {
-  position: absolute;
-  top: 13px;
-  right: 13px;
-
-  display: flex;
-
-  border: 0;
-  background: transparent;
-  color: var(--text-lo);
-}
-
-.modal-close:hover {
-  color: var(--text-hi);
-}
-
-.modal-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 36px;
-  height: 36px;
-  margin-bottom: 13px;
-
-  border-radius: 8px;
-
-  background: rgba(227, 166, 75, 0.08);
-  color: var(--gold);
-}
-  .modal h3 {
-  margin-bottom: 8px;
-}
-
-.modal p {
-  color: var(--text-mid);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.modal-action {
-  width: 100%;
-}
-
-/* ---------------------------------------------------------
-   Plans
---------------------------------------------------------- */
-
-.plans-heading {
-  margin-bottom: 22px;
-}
-
-.plans-heading h2 {
-  margin: 6px 0;
-}
-
-.plans-heading p {
-  color: var(--text-mid);
-  font-size: 11px;
-}
-
-.plans-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.plan-card {
-  position: relative;
-
-  display: flex;
-  flex-direction: column;
-
-  padding: 18px;
-
-  border: 1px solid var(--line);
-  border-radius: 9px;
-
-  background: #0f131b;
-}
-
-.plan-card.featured {
-  border-color: rgba(227, 166, 75, 0.45);
-}
-
-.plan-card.current {
-  opacity: 0.7;
-}
-
-.popular-badge {
-  position: absolute;
-  top: -9px;
-  right: 12px;
-
-  padding: 4px 7px;
-
-  border-radius: 4px;
-
-  background: var(--gold);
-  color: #111;
-
-  font-size: 7px;
-  font-weight: 800;
-}
-
-.plan-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  color: var(--gold);
-}
-
-.plan-card-name {
-  color: var(--text-hi);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.plan-price {
-  margin: 15px 0 6px;
-
-  font-size: 26px;
-  font-weight: 800;
-}
-
-.plan-price span {
-  color: var(--text-lo);
-  font-size: 9px;
-  font-weight: 400;
-}
-
-.plan-description {
-  min-height: 40px;
-
-  color: var(--text-mid);
-  font-size: 9px;
-  line-height: 1.5;
-}
-
-.plan-features {
-  margin: 18px 0;
-}
-  .plan-feature {
-  display: flex;
-  gap: 7px;
-
-  padding: 6px 0;
-
-  color: var(--text-mid);
-  font-size: 9px;
-}
-
-.plan-feature svg {
-  flex: 0 0 auto;
-  color: var(--gold);
-}
-
-.plan-select-btn,
-.plan-current-btn {
-  width: 100%;
-  margin-top: auto;
-}
-
-.plan-current-btn {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  padding: 9px;
-
-  background: transparent;
-  color: var(--text-lo);
-
-  font-size: 10px;
-}
-
-.plans-note {
-  margin-top: 16px;
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-/* ---------------------------------------------------------
-   Payment
---------------------------------------------------------- */
-
-.payment-heading {
-  margin-bottom: 20px;
-}
-
-.payment-heading h2 {
-  margin: 6px 0;
-}
-
-.checkout-price {
-  color: var(--gold);
-  font-size: 25px;
-  font-weight: 800;
-}
-
-.checkout-price span {
-  margin-left: 3px;
-  color: var(--text-lo);
-  font-size: 9px;
-  font-weight: 400;
-}
-
-.payment-methods {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.payment-method {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  width: 100%;
-  padding: 12px;
-
-  border: 1px solid var(--line);
-  border-radius: 7px;
-
-  background: transparent;
-  color: var(--text-mid);
-
-  text-align: left;
-}
-
-.payment-method:hover,
-.payment-method.active {
-  border-color: rgba(227, 166, 75, 0.4);
-  background: rgba(227, 166, 75, 0.05);
-  color: var(--text-hi);
-}
-
-.payment-method > div {
-  flex: 1;
-}
-
-.payment-method small {
-  display: block;
-  margin-top: 3px;
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-.payment-submit {
-  width: 100%;
-  margin-top: 14px;
-}
-.payment-secure {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 5px;
-
-  margin-top: 12px;
-
-  color: var(--text-lo);
-  font-size: 8px;
-}
-
-.crypto-payment {
-  text-align: center;
-}
-
-.crypto-payment .payment-heading p {
-  color: var(--text-mid);
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.crypto-network {
-  display: flex;
-  justify-content: space-between;
-
-  padding: 9px 11px;
-  margin-bottom: 10px;
-
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  color: var(--text-mid);
-  font-size: 9px;
-}
-
-.crypto-network strong {
-  color: var(--gold);
-}
-
-.crypto-amount {
-  margin: 12px 0;
-}
-
-.crypto-amount-label,
-.wallet-label {
-  margin-bottom: 5px;
-  color: var(--text-lo);
-  font-size: 8px;
-  text-align: left;
-}
-
-.crypto-amount-value {
-  color: var(--gold);
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.qr-wrap {
-  display: flex;
-  justify-content: center;
-  margin: 14px 0;
-}
-
-.qr-wrap img {
-  width: 170px;
-  height: 170px;
-  padding: 8px;
-  border-radius: 7px;
-  background: white;
-}
-
-.qr-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-
-  width: 170px;
-  height: 170px;
-  margin: 14px auto;
-
-  border: 1px dashed var(--line);
-  border-radius: 7px;
-
-  color: var(--text-lo);
-  font-size: 9px;
-}
-
-.wallet-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  padding: 9px;
-
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  background: #0e1219;
-}
-
-.wallet-box span {
-  flex: 1;
-
-  overflow: hidden;
-
-  color: var(--text-mid);
-
-  font-family:
-    "IBM Plex Mono",
-    "Courier New",
-    monospace;
-
-  font-size: 8px;
-
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wallet-box button {
-  display: flex;
-
-  border: 0;
-  background: transparent;
-  color: var(--gold);
-  }
-  .crypto-status {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-
-  margin: 14px 0;
-
-  color: var(--gold);
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.crypto-warning {
-  display: flex;
-  gap: 6px;
-
-  padding: 9px;
-
-  border: 1px solid var(--line);
-  border-radius: 6px;
-
-  color: var(--text-lo);
-
-  font-size: 8px;
-  line-height: 1.5;
-  text-align: left;
-}
-
-/* ---------------------------------------------------------
-   Boot
---------------------------------------------------------- */
-
-.boot-screen {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-
-  min-height: 100vh;
-
-  background: var(--bg-void);
-}
-
-.boot-brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.boot-title {
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.boot-sub {
-  margin-top: 4px;
-  color: var(--text-lo);
-  font-size: 9px;
-}
-
-.boot-loader {
-  width: 170px;
-  height: 2px;
-  overflow: hidden;
-  margin-top: 22px;
-  background: var(--line);
-}
-
-.boot-loader span {
-  display: block;
-  width: 45%;
-  height: 100%;
-  background: var(--gold);
-  animation: bootLoad 1.2s ease-in-out infinite;
-}
-
-@keyframes bootLoad {
-  0% {
-    transform: translateX(-120%);
-  }
-
-  100% {
-    transform: translateX(340%);
-  }
-}
-
-/* ---------------------------------------------------------
-   Responsive
---------------------------------------------------------- */
-
-@media (max-width: 1100px) {
-  .dashboard-grid,
-  .account-grid {
-    grid-template-columns: 1fr;
-}
-    @media (max-width: 1100px) {
-  .dashboard-grid,
-  .account-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-side {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .asset-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .analysis-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 760px) {
-  .view-wrap {
-    padding: 18px 12px;
-  }
-
-  .view-head,
-  .dashboard-top {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .topbar {
-    padding: 0 12px;
-  }
-
-  .last-update {
-    display: none;
-  }
-
-  .top-account .top-plan {
-    display: none;
-  }
-
-  .dashboard-side {
-    display: flex;
-  }
-
-  .signals-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .asset-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .calendar-panel {
-    overflow-x: auto;
-  }
-
-  .calendar-head,
-  .calendar-row {
-    min-width: 760px;
-  }
-
-  .plans-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .profile-form {
-    grid-template-columns: 1fr;
-  }
-
-  .form-field:last-of-type,
-  .profile-actions {
-    grid-column: auto;
-  }
-
-  .chart-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .tf-bar {
-    overflow-x: auto;
-    width: 100%;
-  }
-      }
-    @media (max-width: 480px) {
-  .auth-card {
-    padding: 23px;
-  }
-
-  .asset-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .market-tabs {
-    width: 100%;
-  }
-
-  .market-tab {
-    flex: 1;
-  }
-
-  .top-brand > span:last-child {
-    display: none;
-  }
-  }
