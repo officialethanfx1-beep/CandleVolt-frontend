@@ -24,6 +24,7 @@ import {
   CalendarClock,
   Sparkles,
   UserCircle,
+  BarChart3,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -129,7 +130,7 @@ function loadStoredAuth() {
     // storage may be unavailable (private mode etc.) — just skip persistence
   }
   return null;
-  }
+}
 
 function saveStoredAuth({ token, userId, email }) {
   try {
@@ -185,53 +186,68 @@ function Sparkline({ data, positive }) {
 // Real OHLC candlestick chart (TradingView's lightweight-charts) — only
 // meaningful for crypto/meme symbols, since that's the only feed with true
 // per-minute open/high/low/close data (see backend candleStore.js).
-function CandlestickChart({ symbol }) {
+// Real OHLC candlestick chart (TradingView's lightweight-charts) — real
+// historical + live data proxied straight from Binance's public REST API
+// (see backend routes/candles.js), for any supported timeframe.
+function CandlestickChart({ symbol, interval, height = 220 }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    let raf = requestAnimationFrame(() => {
+      if (!containerRef.current) return;
 
-    const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth,
-      height: 220,
-      layout: {
-        background: { type: ColorType.Solid, color: "#0D1017" },
-        textColor: "#9AA3B5",
-        fontFamily: "IBM Plex Mono, monospace",
-      },
-      grid: {
-        vertLines: { color: "#1B2130" },
-        horzLines: { color: "#1B2130" },
-      },
-      timeScale: { borderColor: "#232A3B", timeVisible: true },
-      rightPriceScale: { borderColor: "#232A3B" },
-      crosshair: { mode: 0 },
+      const chart = createChart(containerRef.current, {
+        width: containerRef.current.clientWidth,
+        height,
+        layout: {
+          background: { type: ColorType.Solid, color: "#0D1017" },
+          textColor: "#9AA3B5",
+          fontFamily: "IBM Plex Mono, monospace",
+        },
+        grid: {
+          vertLines: { color: "#1B2130" },
+          horzLines: { color: "#1B2130" },
+        },
+        timeScale: { borderColor: "#232A3B", timeVisible: true },
+        rightPriceScale: { borderColor: "#232A3B" },
+        crosshair: { mode: 0 },
+      });
+
+      const series = chart.addCandlestickSeries({
+        upColor: "#E3A64B",
+        downColor: "#E2555A",
+        borderVisible: false,
+        wickUpColor: "#E3A64B",
+        wickDownColor: "#E2555A",
+      });
+
+      chartRef.current = chart;
+      seriesRef.current = series;
     });
-    const series = chart.addCandlestickSeries({
-      upColor: "#E3A64B",
-      downColor: "#E2555A",
-      borderVisible: false,
-      wickUpColor: "#E3A64B",
-      wickDownColor: "#E2555A",
-    });
 
-    chartRef.current = chart;
-    seriesRef.current = series;
-
-    const handleResize = () => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
+    // ResizeObserver tracks the actual container box (grid/flex layouts
+    // often aren't settled yet on first mount) — this is what was causing
+    // the chart to occasionally render wider than the viewport, forcing a
+    // pinch-zoom to see the rest of the page.
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry && chartRef.current) {
+        chartRef.current.applyOptions({ width: Math.floor(entry.contentRect.width) });
       }
-    };
-    window.addEventListener("resize", handleResize);
+    });
+    ro.observe(containerRef.current);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      chart.remove();
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      chartRef.current?.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
     };
-  }, []);
+  }, [height]);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,7 +255,7 @@ function CandlestickChart({ symbol }) {
     const poll = async () => {
       try {
         const res = await fetchWithTimeout(
-          `${BACKEND_URL}/api/candles?symbol=${encodeURIComponent(symbol)}&limit=100`
+          `${BACKEND_URL}/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=200`
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -258,14 +274,32 @@ function CandlestickChart({ symbol }) {
     };
 
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, 8000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [symbol]);
+  }, [symbol, interval]);
 
   return <div ref={containerRef} className="candle-chart-box" />;
+}
+
+const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1D", "1w", "1M"];
+
+function TimeframeBar({ value, onChange }) {
+  return (
+    <div className="tf-bar">
+      {TIMEFRAMES.map((tf) => (
+        <button
+          key={tf}
+          className={`tf-btn ${value === tf ? "active" : ""}`}
+          onClick={() => onChange(tf)}
+        >
+          {tf}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function timeAgoShort(ts) {
@@ -306,7 +340,8 @@ function NewsPanel({ market }) {
       clearInterval(id);
     };
   }, [category]);
-      return (
+
+  return (
     <div className="panel">
       <div className="panel-title">
         <Radio size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
@@ -382,7 +417,8 @@ function SignalCard({ sig, locked, remainingMs }) {
         </div>
       </div>
     );
-        }
+  }
+
   return (
     <div className={`sig-card ${isBuy ? "sig-buy" : "sig-sell"}`}>
       <div className="sig-top">
@@ -441,6 +477,7 @@ function SignalCard({ sig, locked, remainingMs }) {
 
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { key: "chart", label: "Chart", icon: BarChart3 },
   { key: "news", label: "News", icon: Newspaper },
   { key: "calendar", label: "Market Calendar", icon: CalendarClock },
   { key: "analysis", label: "Daily Analysis", icon: Sparkles },
@@ -482,9 +519,71 @@ function SideMenu({ open, activeView, onSelect, onClose }) {
       </div>
     </>
   );
-          }
+}
+
 // Full-page news view — both categories side by side with a toggle, more
 // headlines than the compact dashboard teaser.
+// Dedicated full-page chart — pick any crypto/meme symbol and timeframe,
+// backed by real historical + live candles from Binance.
+function ChartView() {
+  const chartAssets = [...ASSETS.crypto, ...ASSETS.meme];
+  const [symbol, setSymbol] = useState(chartAssets[0].symbol);
+  const [interval, setIntervalTf] = useState("1m");
+  const [price, setPrice] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices?market=crypto`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const all = [...(data.crypto || []), ...(data.meme || [])];
+        const found = all.find((a) => a.symbol === symbol);
+        if (!cancelled && found) setPrice(found.price);
+      } catch {
+        // keep last known price
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [symbol]);
+
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        <BarChart3 size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+        Chart
+      </div>
+
+      <div className="chart-symbol-picker">
+        {chartAssets.map((a) => (
+          <button
+            key={a.symbol}
+            className={`tab-btn ${symbol === a.symbol ? "active" : ""}`}
+            onClick={() => setSymbol(a.symbol)}
+          >
+            {a.symbol}
+          </button>
+        ))}
+      </div>
+
+      <div className="chart-page-head">
+        <span className="chart-hero-sym">{symbol}</span>
+        <span className="chart-hero-price">{fmtPrice(price, symbol)}</span>
+      </div>
+
+      <TimeframeBar value={interval} onChange={setIntervalTf} />
+
+      <CandlestickChart symbol={symbol} interval={interval} height={380} />
+    </div>
+  );
+}
+
 function NewsView() {
   const [category, setCategory] = useState("crypto");
   const [items, setItems] = useState([]);
@@ -545,29 +644,30 @@ function NewsView() {
   );
 }
 
-// Placeholder — the real economic calendar (CPI, PPI, NFP, FOMC etc. from a
+// Placeholder — the real economic calendar (CPI, PPI, NFP, FOMC etc.  from a
 // free ForexFactory-style feed) is next on the roadmap, not faked here.
 function fmtEventTime(dateStr) {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    weekday: &quot;short&quot;,
+    month: &quot;short&quot;,
+    day: &quot;numeric&quot;,
+    hour: &quot;2-digit&quot;,
+    minute: &quot;2-digit&quot;,
   });
 }
+
 function CalendarView() {
   const [events, setEvents] = useState([]);
-  const [impact, setImpact] = useState("all");
+  const [impact, setImpact] = useState(&quot;all&quot;);
 
-  useEffect(() => {
+  useEffect(() =&gt; {
     let cancelled = false;
-    const poll = async () => {
+    const poll = async () =&gt; {
       try {
         const url =
-          impact === "all"
+          impact === &quot;all&quot;
             ? `${BACKEND_URL}/api/calendar`
             : `${BACKEND_URL}/api/calendar?impact=${impact}`;
         const res = await fetchWithTimeout(url);
@@ -579,65 +679,66 @@ function CalendarView() {
       }
     };
     poll();
-    const id = setInterval(poll, 5 * 60000);
-    return () => {
+    const id = setInterval(poll,
+    5 * 60000);
+    return () =&gt; {
       cancelled = true;
       clearInterval(id);
     };
   }, [impact]);
 
   return (
-    <div className="panel">
-      <div className="panel-title">
-        <CalendarClock size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+    &lt;div className=&quot;panel&quot;&gt;
+      &lt;div className=&quot;panel-title&quot;&gt;
+        &lt;CalendarClock size={12} style={{ display: &quot;inline&quot;, marginRight: 6, verticalAlign: -2 }} /&gt;
         Market Calendar
-      </div>
-      <div className="market-tabs" style={{ marginBottom: 14 }}>
-        {["all", "High", "Medium", "Low"].map((lvl) => (
-          <button
+      &lt;/div&gt;
+      &lt;div className=&quot;market-tabs&quot; style={{ marginBottom: 14 }}&gt;
+        {[&quot;all&quot;, &quot;High&quot;, &quot;Medium&quot;, &quot;Low&quot;].map((lvl) =&gt; (
+          &lt;button
             key={lvl}
-            className={`tab-btn ${impact === lvl ? "active" : ""}`}
-            onClick={() => setImpact(lvl)}
-          >
-            {lvl === "all" ? "All" : lvl}
-          </button>
+            className={`tab-btn ${impact === lvl ? &quot;active&quot; : &quot;&quot;}`}
+            onClick={() =&gt; setImpact(lvl)}
+          &gt;
+            {lvl === &quot;all&quot; ? &quot;All&quot; : lvl}
+          &lt;/button&gt;
         ))}
-      </div>
-      <div className="cal-feed">
-        {events.length === 0 && (
-          <div className="empty-state">Fetching this week's economic calendar…</div>
+      &lt;/div&gt;
+      &lt;div className=&quot;cal-feed&quot;&gt;
+        {events.length === 0 &amp;&amp; (
+          &lt;div className=&quot;empty-state&quot;&gt;Fetching this week&#x27;s economic calendar…&lt;/div&gt;
         )}
-        {events.map((e) => (
-          <div key={e.id} className={`cal-item cal-${(e.impact || "").toLowerCase()}`}>
-            <div className="cal-top">
-              <span className="cal-country">{e.country}</span>
-              <span className={`cal-impact cal-impact-${(e.impact || "").toLowerCase()}`}>
+        {events.map((e) =&gt; (
+          &lt;div key={e.id} className={`cal-item cal-${(e.impact || &quot;&quot;).toLowerCase()}`}&gt;
+            &lt;div className=&quot;cal-top&quot;&gt;
+              &lt;span className=&quot;cal-country&quot;&gt;{e.country}&lt;/span&gt;
+              &lt;span className={`cal-impact cal-impact-${(e.impact || &quot;&quot;).toLowerCase()}`}&gt;
                 {e.impact}
-              </span>
-            </div>
-            <div className="cal-title">{e.title}</div>
-            <div className="cal-time">{fmtEventTime(e.date)}</div>
-            <div className="cal-figures">
-              <span>Forecast: {e.forecast || "—"}</span>
-              <span>Previous: {e.previous || "—"}</span>
-              <span>Actual: {e.actual || "—"}</span>
-            </div>
-          </div>
+              &lt;/span&gt;
+            &lt;/div&gt;
+            &lt;div className=&quot;cal-title&quot;&gt;{e.title}&lt;/div&gt;
+            &lt;div className=&quot;cal-time&quot;&gt;{fmtEventTime(e.date)}&lt;/div&gt;
+            &lt;div className=&quot;cal-figures&quot;&gt;
+              &lt;span&gt;Forecast: {e.forecast || &quot;—&quot;}&lt;/span&gt;
+              &lt;span&gt;Previous: {e.previous || &quot;—&quot;}&lt;/span&gt;
+              &lt;span&gt;Actual: {e.actual || &quot;—&quot;}&lt;/span&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
         ))}
-      </div>
-    </div>
+      &lt;/div&gt;
+    &lt;/div&gt;
   );
-            }
+}
 // Placeholder — the real AI-generated daily market summary (built from the
 // live prices/news/signals already flowing through the backend) is next on
-// the roadmap. No fabricated "predictions" shown here in the meantime.
+// the roadmap. No fabricated &quot;predictions&quot; shown here in the meantime.
 function AnalysisView() {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  useEffect(() =&gt; {
     let cancelled = false;
-    const poll = async () => {
+    const poll = async () =&gt; {
       try {
         const res = await fetchWithTimeout(`${BACKEND_URL}/api/analysis`);
         if (!res.ok) return;
@@ -651,313 +752,311 @@ function AnalysisView() {
     };
     poll();
     const id = setInterval(poll, 5 * 60000);
-    return () => {
+    return () =&gt; {
       cancelled = true;
       clearInterval(id);
     };
   }, []);
 
   return (
-    <div className="panel">
-      <div className="panel-title">
-        <Sparkles size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+    &lt;div className=&quot;panel&quot;&gt;
+      &lt;div className=&quot;panel-title&quot;&gt;
+        &lt;Sparkles size={12} style={{ display: &quot;inline&quot;, marginRight: 6, verticalAlign: -2 }} /&gt;
         Daily Analysis
-      </div>
+      &lt;/div&gt;
 
-      {loading && (
-        <div className="empty-state">Loading the latest briefing…</div>
+      {loading &amp;&amp; (
+        &lt;div className=&quot;empty-state&quot;&gt;Loading the latest briefing…&lt;/div&gt;
       )}
 
-      {!loading && !analysis?.text && (
-        <div className="coming-soon">
-          <Sparkles size={28} style={{ color: "#5C6478", marginBottom: 10 }} />
-          <p>No briefing generated yet — check back shortly.</p>
-        </div>
+      {!loading &amp;&amp; !analysis?.text &amp;&amp; (
+        &lt;div className=&quot;coming-soon&quot;&gt;
+          &lt;Sparkles size={28} style={{ color: &quot;#5C6478&quot;, marginBottom: 10 }} /&gt;
+          &lt;p&gt;No briefing generated yet — check back shortly.&lt;/p&gt;
+        &lt;/div&gt;
       )}
 
-      {!loading && analysis?.text && (
-        <>
-          <div className="analysis-updated">
+      {!loading &amp;&amp; analysis?.text &amp;&amp; (
+        &lt;&gt;
+          &lt;div className=&quot;analysis-updated&quot;&gt;
             Last updated {timeAgoShort(analysis.generatedAt)}
-          </div>
-          <div className="analysis-text">{analysis.text}</div>
-          <div className="disclaimer">
-            <ShieldCheck size={16} />
-            <span>
+          &lt;/div&gt;
+          &lt;div className=&quot;analysis-text&quot;&gt;{analysis.text}&lt;/div&gt;
+          &lt;div className=&quot;disclaimer&quot;&gt;
+            &lt;ShieldCheck size={16} /&gt;
+            &lt;span&gt;
               AI-generated read on current conditions — not a guaranteed
               prediction. Always do your own research before trading.
-            </span>
-          </div>
-        </>
+            &lt;/span&gt;
+          &lt;/div&gt;
+        &lt;/&gt;
       )}
-    </div>
+    &lt;/div&gt;
   );
 }
 
 function AccountView({ auth, onLogout, onShowAuth, onProfileSaved, plans, currentPlan, onSubscribe }) {
   const [form, setForm] = useState({
-    username: auth?.profile?.username || "",
-    firstName: auth?.profile?.firstName || "",
-    lastName: auth?.profile?.lastName || "",
-    country: auth?.profile?.country || "",
-    bio: auth?.profile?.bio || "",
+    username: auth?.profile?.username || &quot;&quot;,
+    firstName: auth?.profile?.firstName || &quot;&quot;,
+    lastName: auth?.profile?.lastName || &quot;&quot;,
+    country: auth?.profile?.country || &quot;&quot;,
+    bio: auth?.profile?.bio || &quot;&quot;,
     avatar: auth?.profile?.avatar || null,
   });
   const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState("");
+  const [saveMsg, setSaveMsg] = useState(&quot;&quot;);
   const fileRef = useRef(null);
 
-  const handleAvatar = (e) => {
+  const handleAvatar = (e) =&gt; {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = () =&gt; {
       const img = new Image();
-      img.onload = () => {
+      img.onload = () =&gt; {
         const size = 160;
-        const canvas = document.createElement("canvas");
+        const canvas = document.createElement(&quot;canvas&quot;);
         canvas.width = size;
         canvas.height = size;
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext(&quot;2d&quot;);
         const s = Math.min(img.width, img.height);
         ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
-        setForm((f) => ({ ...f, avatar: canvas.toDataURL("image/jpeg", 0.82) }));
+        setForm((f) =&gt; ({ ...f, avatar: canvas.toDataURL(&quot;image/jpeg&quot;, 0.82) }));
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   };
-  
-  const save = async () => {
+
+  const save = async () =&gt; {
     setSaving(true);
-    setSaveMsg("");
+    setSaveMsg(&quot;&quot;);
     try {
       const stored = loadStoredAuth();
       const res = await fetch(`${BACKEND_URL}/api/auth/profile`, {
-        method: "PUT",
+        method: &quot;PUT&quot;,
         headers: {
-          "Content-Type": "application/json",
+          &quot;Content-Type&quot;: &quot;application/json&quot;,
           Authorization: `Bearer ${stored?.token}`,
         },
         body: JSON.stringify(form),
       });
       const data = await res.json();
       if (res.ok) {
-        setSaveMsg("Saved.");
+        setSaveMsg(&quot;Saved.&quot;);
         onProfileSaved(data.profile);
       } else {
-        setSaveMsg(data.error || "Could not save.");
+        setSaveMsg(data.error || &quot;Could not save.&quot;);
       }
     } catch {
-      setSaveMsg("Couldn't reach the server.");
+      setSaveMsg(&quot;Couldn&#x27;t reach the server.&quot;);
     } finally {
       setSaving(false);
     }
   };
-
-  return (
-    <>
-      <div className="panel">
-        <div className="panel-title">
-          <UserCircle size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+return (
+    &lt;&gt;
+      &lt;div className=&quot;panel&quot;&gt;
+        &lt;div className=&quot;panel-title&quot;&gt;
+          &lt;UserCircle size={12} style={{ display: &quot;inline&quot;, marginRight: 6, verticalAlign: -2 }} /&gt;
           Profile
-        </div>
+        &lt;/div&gt;
         {auth?.guest ? (
-          <div className="account-guest-box">
-            <p>You're browsing as a guest — sign in to save your profile and plan.</p>
-            <button className="rzp-btn" onClick={onShowAuth}>
+          &lt;div className=&quot;account-guest-box&quot;&gt;
+            &lt;p&gt;You&#x27;re browsing as a guest — sign in to save your profile and plan.&lt;/p&gt;
+            &lt;button className=&quot;rzp-btn&quot; onClick={onShowAuth}&gt;
               Sign in
-            </button>
-          </div>
+            &lt;/button&gt;
+          &lt;/div&gt;
         ) : (
-          <>
-            <div className="profile-avatar-row">
-              <div className="profile-avatar" onClick={() => fileRef.current?.click()}>
-                {form.avatar ? <img src={form.avatar} alt="avatar" /> : <UserCircle size={36} />}
-              </div>
-              <input
+          &lt;&gt;
+            &lt;div className=&quot;profile-avatar-row&quot;&gt;
+              &lt;div className=&quot;profile-avatar&quot; onClick={() =&gt; fileRef.current?.click()}&gt;
+                {form.avatar ? &lt;img src={form.avatar} alt=&quot;avatar&quot; /&gt; : &lt;UserCircle size={36} /&gt;}
+              &lt;/div&gt;
+              &lt;input
                 ref={fileRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
+                type=&quot;file&quot;
+                accept=&quot;image/*&quot;
+                style={{ display: &quot;none&quot; }}
                 onChange={handleAvatar}
-              />
-              <div>
-                <div className="account-email">{auth?.email}</div>
-                <div className="account-plan-label">Current plan: {currentPlan}</div>
-              </div>
-            </div>
+              /&gt;
+              &lt;div&gt;
+                &lt;div className=&quot;account-email&quot;&gt;{auth?.email}&lt;/div&gt;
+                &lt;div className=&quot;account-plan-label&quot;&gt;Current plan: {currentPlan}&lt;/div&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
 
-            <input
-              className="auth-input"
-              placeholder="Username"
+            &lt;input
+              className=&quot;auth-input&quot;
+              placeholder=&quot;Username&quot;
               value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-            />
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                className="auth-input"
-                placeholder="First name"
+              onChange={(e) =&gt; setForm({ ...form, username: e.target.value })}
+            /&gt;
+            &lt;div style={{ display: &quot;flex&quot;, gap: 8 }}&gt;
+              &lt;input
+                className=&quot;auth-input&quot;
+                placeholder=&quot;First name&quot;
                 value={form.firstName}
-                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-              />
-              <input
-                className="auth-input"
-                placeholder="Last name"
+                onChange={(e) =&gt; setForm({ ...form, firstName: e.target.value })}
+              /&gt;
+              &lt;input
+                className=&quot;auth-input&quot;
+                placeholder=&quot;Last name&quot;
                 value={form.lastName}
-                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-              />
-            </div>
-            <input
-              className="auth-input"
-              placeholder="Country"
+                onChange={(e) =&gt; setForm({ ...form, lastName: e.target.value })}
+              /&gt;
+            &lt;/div&gt;
+            &lt;input
+              className=&quot;auth-input&quot;
+              placeholder=&quot;Country&quot;
               value={form.country}
-              onChange={(e) => setForm({ ...form, country: e.target.value })}
-            />
-            <textarea
-              className="auth-input profile-bio"
-              placeholder="Bio"
+              onChange={(e) =&gt; setForm({ ...form, country: e.target.value })}
+            /&gt;
+            &lt;textarea
+              className=&quot;auth-input profile-bio&quot;
+              placeholder=&quot;Bio&quot;
               rows={3}
               value={form.bio}
-              onChange={(e) => setForm({ ...form, bio: e.target.value })}
-            />
+              onChange={(e) =&gt; setForm({ ...form, bio: e.target.value })}
+            /&gt;
 
-            <button className="rzp-btn" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save profile"}
-            </button>
-            {saveMsg && <div className="profile-save-msg">{saveMsg}</div>}
+            &lt;button className=&quot;rzp-btn&quot; onClick={save} disabled={saving}&gt;
+              {saving ? &quot;Saving…&quot; : &quot;Save profile&quot;}
+            &lt;/button&gt;
+            {saveMsg &amp;&amp; &lt;div className=&quot;profile-save-msg&quot;&gt;{saveMsg}&lt;/div&gt;}
 
-            <button className="auth-badge-btn" style={{ marginTop: 12 }} onClick={onLogout}>
+            &lt;button className=&quot;auth-badge-btn&quot; style={{ marginTop: 12 }} onClick={onLogout}&gt;
               Log out
-            </button>
-          </>
+            &lt;/button&gt;
+          &lt;/&gt;
         )}
-      </div>
-      
-      <div className="panel" style={{ marginTop: 20 }}>
-        <div className="panel-title">
-          <Crown size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+      &lt;/div&gt;
+              &lt;div className=&quot;panel&quot; style={{ marginTop: 20 }}&gt;
+        &lt;div className=&quot;panel-title&quot;&gt;
+          &lt;Crown size={12} style={{ display: &quot;inline&quot;, marginRight: 6, verticalAlign: -2 }} /&gt;
           Subscription Plans
-        </div>
-        <div className="plans-row">
-          {plans.map((p) => (
-            <div
+        &lt;/div&gt;
+        &lt;div className=&quot;plans-row&quot;&gt;
+          {plans.map((p) =&gt; (
+            &lt;div
               key={p.name}
-              className={`plan-card ${p.highlight ? "highlight" : ""} ${
-                currentPlan === p.name ? "active" : ""
+              className={`plan-card ${p.highlight ? &quot;highlight&quot; : &quot;&quot;} ${
+                currentPlan === p.name ? &quot;active&quot; : &quot;&quot;
               }`}
-            >
-              <div className="plan-head">
-                <span className="plan-name">
-                  {p.name === "Elite" && <Crown size={13} />}
+            &gt;
+              &lt;div className=&quot;plan-head&quot;&gt;
+                &lt;span className=&quot;plan-name&quot;&gt;
+                  {p.name === &quot;Elite&quot; &amp;&amp; &lt;Crown size={13} /&gt;}
                   {p.name}
-                </span>
-                <span className="plan-price">
+                &lt;/span&gt;
+                &lt;span className=&quot;plan-price&quot;&gt;
                   {p.price}
-                  <span>{p.period}</span>
-                </span>
-              </div>
-              <div className="plan-feats">
-                {p.features.map((f) => (
-                  <div key={f} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <ChevronRight size={11} style={{ flexShrink: 0, color: "#5C6478" }} />
+                  &lt;span&gt;{p.period}&lt;/span&gt;
+                &lt;/span&gt;
+              &lt;/div&gt;
+              &lt;div className=&quot;plan-feats&quot;&gt;
+                {p.features.map((f) =&gt; (
+                  &lt;div key={f} style={{ display: &quot;flex&quot;, gap: 6, alignItems: &quot;center&quot; }}&gt;
+                    &lt;ChevronRight size={11} style={{ flexShrink: 0, color: &quot;#5C6478&quot; }} /&gt;
                     {f}
-                  </div>
+                  &lt;/div&gt;
                 ))}
-              </div>
-              <button
-                className="plan-pay-btn"
-                disabled={p.name === "Free"}
-                onClick={() => onSubscribe(p)}
-              >
-                <QrCode size={13} />
-                {p.name === "Free" ? "Current plan" : "Subscribe"}
-              </button>
-            </div>
+              &lt;/div&gt;
+              &lt;button
+                className=&quot;plan-pay-btn&quot;
+                disabled={p.name === &quot;Free&quot;}
+                onClick={() =&gt; onSubscribe(p)}
+              &gt;
+                &lt;QrCode size={13} /&gt;
+                {p.name === &quot;Free&quot; ? &quot;Current plan&quot; : &quot;Subscribe&quot;}
+              &lt;/button&gt;
+            &lt;/div&gt;
           ))}
-        </div>
-      </div>
+        &lt;/div&gt;
+      &lt;/div&gt;
 
-      <div className="panel" style={{ marginTop: 20 }}>
-        <div className="panel-title">
-          <Wallet size={12} style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
+      &lt;div className=&quot;panel&quot; style={{ marginTop: 20 }}&gt;
+        &lt;div className=&quot;panel-title&quot;&gt;
+          &lt;Wallet size={12} style={{ display: &quot;inline&quot;, marginRight: 6, verticalAlign: -2 }} /&gt;
           Your Earnings
-        </div>
-        <div className="stat-row">
-          <div className="stat-box">
-            <div className="stat-label"><Users size={11} /> Subscribers</div>
-            <div className="stat-val">312</div>
-          </div>
-          <div className="stat-box">
-            <div className="stat-label"><Wallet size={11} /> This Month</div>
-            <div className="stat-val gold">₹1,86,400</div>
-          </div>
-          <div className="stat-box">
-            <div className="stat-label"><Crown size={11} /> Elite Users</div>
-            <div className="stat-val">44</div>
-          </div>
-        </div>
-        <div className="disclaimer">
-          <ShieldCheck size={16} />
-          <span>
+        &lt;/div&gt;
+        &lt;div className=&quot;stat-row&quot;&gt;
+          &lt;div className=&quot;stat-box&quot;&gt;
+            &lt;div className=&quot;stat-label&quot;&gt;&lt;Users size={11} /&gt; Subscribers&lt;/div&gt;
+            &lt;div className=&quot;stat-val&quot;&gt;312&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div className=&quot;stat-box&quot;&gt;
+            &lt;div className=&quot;stat-label&quot;&gt;&lt;Wallet size={11} /&gt; This Month&lt;/div&gt;
+            &lt;div className=&quot;stat-val gold&quot;&gt;₹1,86,400&lt;/div&gt;
+          &lt;/div&gt;
+          &lt;div className=&quot;stat-box&quot;&gt;
+            &lt;div className=&quot;stat-label&quot;&gt;&lt;Crown size={11} /&gt; Elite Users&lt;/div&gt;
+            &lt;div className=&quot;stat-val&quot;&gt;44&lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div className=&quot;disclaimer&quot;&gt;
+          &lt;ShieldCheck size={16} /&gt;
+          &lt;span&gt;
             Illustrative numbers — wire them to your real user table (see
             backend db.js) once you have paying users.
-          </span>
-        </div>
-      </div>
-    </>
+          &lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/&gt;
   );
 }
 
 function AuthModal({ onAuthenticated, onClose }) {
-  const [step, setStep] = useState("email"); // email | otp
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const [step, setStep] = useState(&quot;email&quot;); // email | otp
+  const [email, setEmail] = useState(&quot;&quot;);
+  const [code, setCode] = useState(&quot;&quot;);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(&quot;&quot;);
 
-  const requestOtp = async () => {
-    setError("");
+  const requestOtp = async () =&gt; {
+    setError(&quot;&quot;);
     if (!email) {
-      setError("Enter your email.");
+      setError(&quot;Enter your email.&quot;);
       return;
     }
     setLoading(true);
     try {
       const res = await fetch(`${BACKEND_URL}/api/auth/request-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: &quot;POST&quot;,
+        headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Something went wrong.");
+        setError(data.error || &quot;Something went wrong.&quot;);
         return;
       }
-      setStep("otp");
+      setStep(&quot;otp&quot;);
     } catch {
-      setError("Couldn't reach the server — try again in a moment.");
+      setError(&quot;Couldn&#x27;t reach the server — try again in a moment.&quot;);
     } finally {
       setLoading(false);
     }
   };
 
-  const verifyOtp = async () => {
-    setError("");
+  const verifyOtp = async () =&gt; {
+    setError(&quot;&quot;);
     if (!code) {
-      setError("Enter the code sent to your email.");
+      setError(&quot;Enter the code sent to your email.&quot;);
       return;
     }
     setLoading(true);
     try {
       const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: &quot;POST&quot;,
+        headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
         body: JSON.stringify({ email, code }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Invalid code.");
+        setError(data.error || &quot;Invalid code.&quot;);
         return;
       }
       saveStoredAuth({ token: data.token, userId: data.userId, email: data.email });
@@ -968,174 +1067,175 @@ function AuthModal({ onAuthenticated, onClose }) {
         profile: data.profile,
       });
     } catch {
-      setError("Couldn't reach the server — try again in a moment.");
+      setError(&quot;Couldn&#x27;t reach the server — try again in a moment.&quot;);
     } finally {
       setLoading(false);
     }
   };
-return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <div className="modal-title">
-            <Zap size={16} /> {step === "email" ? "Sign in" : "Enter code"}
-          </div>
-          <button className="modal-close" onClick={onClose}>
-            <X size={16} />
-          </button>
-        </div>
 
-        {step === "email" ? (
-          <>
-            <input
-              className="auth-input"
-              type="email"
-              autoComplete="email"
-              placeholder="Email"
+  return (
+    &lt;div className=&quot;modal-backdrop&quot; onClick={onClose}&gt;
+      &lt;div className=&quot;modal-card&quot; onClick={(e) =&gt; e.stopPropagation()}&gt;
+        &lt;div className=&quot;modal-head&quot;&gt;
+          &lt;div className=&quot;modal-title&quot;&gt;
+            &lt;Zap size={16} /&gt; {step === &quot;email&quot; ? &quot;Sign in&quot; : &quot;Enter code&quot;}
+          &lt;/div&gt;
+          &lt;button className=&quot;modal-close&quot; onClick={onClose}&gt;
+            &lt;X size={16} /&gt;
+          &lt;/button&gt;
+        &lt;/div&gt;
+
+        {step === &quot;email&quot; ? (
+          &lt;&gt;
+            &lt;input
+              className=&quot;auth-input&quot;
+              type=&quot;email&quot;
+              autoComplete=&quot;email&quot;
+              placeholder=&quot;Email&quot;
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && requestOtp()}
-            />
-            {error && <div className="rzp-error">{error}</div>}
-            <button className="rzp-btn" onClick={requestOtp} disabled={loading}>
-              {loading ? "Sending…" : "Send code"}
-            </button>
-          </>
+              onChange={(e) =&gt; setEmail(e.target.value)}
+              onKeyDown={(e) =&gt; e.key === &quot;Enter&quot; &amp;&amp; requestOtp()}
+            /&gt;
+            {error &amp;&amp; &lt;div className=&quot;rzp-error&quot;&gt;{error}&lt;/div&gt;}
+            &lt;button className=&quot;rzp-btn&quot; onClick={requestOtp} disabled={loading}&gt;
+              {loading ? &quot;Sending…&quot; : &quot;Send code&quot;}
+            &lt;/button&gt;
+          &lt;/&gt;
         ) : (
-          <>
-            <div className="otp-hint">Code sent to {email}</div>
-            <input
-              className="auth-input"
-              type="text"
-              inputMode="numeric"
+          &lt;&gt;
+            &lt;div className=&quot;otp-hint&quot;&gt;Code sent to {email}&lt;/div&gt;
+            &lt;input
+              className=&quot;auth-input&quot;
+              type=&quot;text&quot;
+              inputMode=&quot;numeric&quot;
               maxLength={6}
-              placeholder="6-digit code"
+              placeholder=&quot;6-digit code&quot;
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && verifyOtp()}
-            />
-            {error && <div className="rzp-error">{error}</div>}
-            <button className="rzp-btn" onClick={verifyOtp} disabled={loading}>
-              {loading ? "Verifying…" : "Verify & continue"}
-            </button>
-            <div className="auth-switch">
-              <span onClick={() => setStep("email")}>Use a different email</span>
-            </div>
-          </>
+              onChange={(e) =&gt; setCode(e.target.value.replace(/\D/g, &quot;&quot;))}
+              onKeyDown={(e) =&gt; e.key === &quot;Enter&quot; &amp;&amp; verifyOtp()}
+            /&gt;
+            {error &amp;&amp; &lt;div className=&quot;rzp-error&quot;&gt;{error}&lt;/div&gt;}
+            &lt;button className=&quot;rzp-btn&quot; onClick={verifyOtp} disabled={loading}&gt;
+              {loading ? &quot;Verifying…&quot; : &quot;Verify &amp; continue&quot;}
+            &lt;/button&gt;
+            &lt;div className=&quot;auth-switch&quot;&gt;
+              &lt;span onClick={() =&gt; setStep(&quot;email&quot;)}&gt;Use a different email&lt;/span&gt;
+            &lt;/div&gt;
+          &lt;/&gt;
         )}
-      </div>
-    </div>
+      &lt;/div&gt;
+    &lt;/div&gt;
   );
 }
-
-function loadRazorpayScript() {
-  return new Promise((resolve) => {
+                  function loadRazorpayScript() {
+  return new Promise((resolve) =&gt; {
     if (window.Razorpay) return resolve(true);
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
+    const script = document.createElement(&quot;script&quot;);
+    script.src = &quot;https://checkout.razorpay.com/v1/checkout.js&quot;;
+    script.onload = () =&gt; resolve(true);
+    script.onerror = () =&gt; resolve(false);
     document.body.appendChild(script);
   });
 }
 
 function PaymentModal({ plan, sessionId, onClose, onActivated }) {
-  const [tab, setTab] = useState("crypto");
+  const [tab, setTab] = useState(&quot;crypto&quot;);
   const [copied, setCopied] = useState(false);
   const [rzpLoading, setRzpLoading] = useState(false);
-  const [rzpError, setRzpError] = useState("");
+  const [rzpError, setRzpError] = useState(&quot;&quot;);
 
   // Real crypto order state — created on the backend so the exact amount
   // is unique to this order and can be auto-matched on-chain.
   const [cryptoOrder, setCryptoOrder] = useState(null);
-  const [cryptoError, setCryptoError] = useState("");
-  const [cryptoStatus, setCryptoStatus] = useState("pending"); // pending | paid | expired
+  const [cryptoError, setCryptoError] = useState(&quot;&quot;);
+  const [cryptoStatus, setCryptoStatus] = useState(&quot;pending&quot;); // pending | paid | expired
 
-  useEffect(() => {
-    if (tab !== "crypto" || cryptoOrder) return;
+  useEffect(() =&gt; {
+    if (tab !== &quot;crypto&quot; || cryptoOrder) return;
     let cancelled = false;
-    (async () => {
+    (async () =&gt; {
       try {
         const res = await fetch(`${BACKEND_URL}/api/subscribe/create-crypto-order`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: &quot;POST&quot;,
+          headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
           body: JSON.stringify({ userId: sessionId, planName: plan.name }),
         });
-        if (!res.ok) throw new Error("bad response");
+        if (!res.ok) throw new Error(&quot;bad response&quot;);
         const data = await res.json();
         if (!cancelled) setCryptoOrder(data);
       } catch {
         if (!cancelled)
-          setCryptoError("Couldn't reach the backend to create a payment order.");
+          setCryptoError(&quot;Couldn&#x27;t reach the backend to create a payment order.&quot;);
       }
     })();
-    return () => {
+    return () =&gt; {
       cancelled = true;
     };
   }, [tab, cryptoOrder, sessionId, plan.name]);
 
   // Poll for automatic on-chain confirmation — no admin action needed.
-  useEffect(() => {
-    if (!cryptoOrder || cryptoStatus !== "pending") return;
-    const id = setInterval(async () => {
+  useEffect(() =&gt; {
+    if (!cryptoOrder || cryptoStatus !== &quot;pending&quot;) return;
+    const id = setInterval(async () =&gt; {
       try {
         const res = await fetch(
           `${BACKEND_URL}/api/subscribe/crypto-status?orderId=${cryptoOrder.orderId}`
         );
         if (!res.ok) return;
         const data = await res.json();
-        if (data.status === "paid") {
-          setCryptoStatus("paid");
+        if (data.status === &quot;paid&quot;) {
+          setCryptoStatus(&quot;paid&quot;);
           onActivated(plan.name);
-        } else if (data.status === "expired") {
-          setCryptoStatus("expired");
+        } else if (data.status === &quot;expired&quot;) {
+          setCryptoStatus(&quot;expired&quot;);
         }
       } catch {
         // ignore transient poll failures
       }
     }, 5000);
-    return () => clearInterval(id);
+    return () =&gt; clearInterval(id);
   }, [cryptoOrder, cryptoStatus, onActivated, plan.name]);
 
   const qrUrl = cryptoOrder
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&color=237-166-75&bgcolor=13-16-23&data=${encodeURIComponent(
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=190x190&amp;margin=8&amp;color=237-166-75&amp;bgcolor=13-16-23&amp;data=${encodeURIComponent(
         cryptoOrder.walletAddress
       )}`
     : null;
-  const handleCopy = (text) => {
-    navigator.clipboard?.writeText(text).catch(() => {});
+
+  const handleCopy = (text) =&gt; {
+    navigator.clipboard?.writeText(text).catch(() =&gt; {});
     setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    setTimeout(() =&gt; setCopied(false), 1800);
   };
 
-  const payWithRazorpay = async () => {
-    setRzpError("");
+  const payWithRazorpay = async () =&gt; {
+    setRzpError(&quot;&quot;);
     setRzpLoading(true);
     try {
       const orderRes = await fetch(`${BACKEND_URL}/api/subscribe/create-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: &quot;POST&quot;,
+        headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
         body: JSON.stringify({ userId: sessionId, planName: plan.name }),
       });
-      if (!orderRes.ok) throw new Error("Order creation failed");
+      if (!orderRes.ok) throw new Error(&quot;Order creation failed&quot;);
       const order = await orderRes.json();
 
       const loaded = await loadRazorpayScript();
-      if (!loaded) throw new Error("Could not load Razorpay checkout");
+      if (!loaded) throw new Error(&quot;Could not load Razorpay checkout&quot;);
 
       const rzp = new window.Razorpay({
         key: order.keyId,
         amount: order.amount,
         currency: order.currency,
         order_id: order.orderId,
-        name: "CandleVolt",
+        name: &quot;CandleVolt&quot;,
         description: `${plan.name} plan`,
-        theme: { color: "#E3A64B" },
-        handler: async (response) => {
-          try {
+        theme: { color: &quot;#E3A64B&quot; },
+        handler: async (response) =&gt; {
+                  try {
             const verifyRes = await fetch(`${BACKEND_URL}/api/subscribe/verify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
+              method: &quot;POST&quot;,
+              headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
               body: JSON.stringify({
                 orderId: response.razorpay_order_id,
                 paymentId: response.razorpay_payment_id,
@@ -1147,19 +1247,19 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
             if (verifyRes.ok) {
               onActivated(plan.name);
             } else {
-              setRzpError("Payment captured but verification failed — contact support.");
+              setRzpError(&quot;Payment captured but verification failed — contact support.&quot;);
             }
           } catch {
-            setRzpError("Verification request failed.");
+            setRzpError(&quot;Verification request failed.&quot;);
           }
         },
       });
-      rzp.on("payment.failed", () => setRzpError("Payment failed or was cancelled."));
+      rzp.on(&quot;payment.failed&quot;, () =&gt; setRzpError(&quot;Payment failed or was cancelled.&quot;));
       rzp.open();
     } catch (e) {
       setRzpError(
-        e.message === "Order creation failed"
-          ? "Couldn't reach the backend — is it running and is BACKEND_URL set correctly?"
+        e.message === &quot;Order creation failed&quot;
+          ? &quot;Couldn&#x27;t reach the backend — is it running and is BACKEND_URL set correctly?&quot;
           : e.message
       );
     } finally {
@@ -1168,156 +1268,158 @@ function PaymentModal({ plan, sessionId, onClose, onActivated }) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <div className="modal-title">
-            <QrCode size={16} /> Subscribe — {plan.name}
-          </div>
-          <button className="modal-close" onClick={onClose}>
-            <X size={16} />
-          </button>
-        </div>
+    &lt;div className=&quot;modal-backdrop&quot; onClick={onClose}&gt;
+      &lt;div className=&quot;modal-card&quot; onClick={(e) =&gt; e.stopPropagation()}&gt;
+        &lt;div className=&quot;modal-head&quot;&gt;
+          &lt;div className=&quot;modal-title&quot;&gt;
+            &lt;QrCode size={16} /&gt; Subscribe — {plan.name}
+          &lt;/div&gt;
+          &lt;button className=&quot;modal-close&quot; onClick={onClose}&gt;
+            &lt;X size={16} /&gt;
+          &lt;/button&gt;
+        &lt;/div&gt;
 
-        <div className="pay-tabs">
-          <button
-            className={`pay-tab ${tab === "crypto" ? "pay-tab-active" : ""}`}
-            onClick={() => setTab("crypto")}
-          >
-            <QrCode size={13} /> Crypto
-          </button>
-          <button
-            className={`pay-tab ${tab === "razorpay" ? "pay-tab-active" : ""}`}
-            onClick={() => setTab("razorpay")}
-          >
-            <CreditCard size={13} /> Card / UPI
-          </button>
-        </div>
+        &lt;div className=&quot;pay-tabs&quot;&gt;
+          &lt;button
+            className={`pay-tab ${tab === &quot;crypto&quot; ? &quot;pay-tab-active&quot; : &quot;&quot;}`}
+            onClick={() =&gt; setTab(&quot;crypto&quot;)}
+          &gt;
+            &lt;QrCode size={13} /&gt; Crypto
+          &lt;/button&gt;
+          &lt;button
+            className={`pay-tab ${tab === &quot;razorpay&quot; ? &quot;pay-tab-active&quot; : &quot;&quot;}`}
+            onClick={() =&gt; setTab(&quot;razorpay&quot;)}
+          &gt;
+            &lt;CreditCard size={13} /&gt; Card / UPI
+          &lt;/button&gt;
+        &lt;/div&gt;
 
-        <div className="modal-plan-row">
-          <span>{plan.name} plan</span>
-          <span className="modal-amount">
+        &lt;div className=&quot;modal-plan-row&quot;&gt;
+          &lt;span&gt;{plan.name} plan&lt;/span&gt;
+          &lt;span className=&quot;modal-amount&quot;&gt;
             {plan.price}
-            {tab === "crypto" && cryptoOrder && (
-              <span className="modal-amount-usdt"> ≈ {cryptoOrder.amount} USDT</span>
+            {tab === &quot;crypto&quot; &amp;&amp; cryptoOrder &amp;&amp; (
+              &lt;span className=&quot;modal-amount-usdt&quot;&gt; ≈ {cryptoOrder.amount} USDT&lt;/span&gt;
             )}
-          </span>
-        </div>
-      {tab === "crypto" ? (
-          <>
-            {cryptoError && <div className="rzp-error">{cryptoError}</div>}
+          &lt;/span&gt;
+        &lt;/div&gt;
 
-            {!cryptoOrder && !cryptoError && (
-              <div className="rzp-box">
-                <p>Setting up your payment order…</p>
-              </div>
+        {tab === &quot;crypto&quot; ? (
+          &lt;&gt;
+            {cryptoError &amp;&amp; &lt;div className=&quot;rzp-error&quot;&gt;{cryptoError}&lt;/div&gt;}
+
+            {!cryptoOrder &amp;&amp; !cryptoError &amp;&amp; (
+              &lt;div className=&quot;rzp-box&quot;&gt;
+                &lt;p&gt;Setting up your payment order…&lt;/p&gt;
+              &lt;/div&gt;
             )}
 
-            {cryptoOrder && cryptoStatus === "pending" && (
-              <>
-                <div className="exact-amount-box">
-                  <div className="exact-amount-label">Send exactly</div>
-                  <div className="exact-amount-value">
+            {cryptoOrder &amp;&amp; cryptoStatus === &quot;pending&quot; &amp;&amp; (
+              &lt;&gt;
+                &lt;div className=&quot;exact-amount-box&quot;&gt;
+                  &lt;div className=&quot;exact-amount-label&quot;&gt;Send exactly&lt;/div&gt;
+                  &lt;div className=&quot;exact-amount-value&quot;&gt;
                     {cryptoOrder.amount} USDT
-                    <button
-                      className="copy-btn-inline"
-                      onClick={() => handleCopy(String(cryptoOrder.amount))}
-                    >
-                      {copied ? <Check size={12} /> : <Copy size={12} />}
-                    </button>
-                  </div>
-                  <div className="exact-amount-warn">
-                    The exact decimal amount matters — it's how we identify your
+                    &lt;button
+                      className=&quot;copy-btn-inline&quot;
+                      onClick={() =&gt; handleCopy(String(cryptoOrder.amount))}
+                    &gt;
+                      {copied ? &lt;Check size={12} /&gt; : &lt;Copy size={12} /&gt;}
+                    &lt;/button&gt;
+                  &lt;/div&gt;
+                  &lt;div className=&quot;exact-amount-warn&quot;&gt;
+                  The exact decimal amount matters — it&#x27;s how we identify your
                     payment. Sending a rounded amount will delay activation.
-                  </div>
-                </div>
+                  &lt;/div&gt;
+                &lt;/div&gt;
 
-                <div className="qr-box">
-                  <img src={qrUrl} alt="Payment QR code" width={190} height={190} />
-                </div>
+                &lt;div className=&quot;qr-box&quot;&gt;
+                  &lt;img src={qrUrl} alt=&quot;Payment QR code&quot; width={190} height={190} /&gt;
+                &lt;/div&gt;
 
-                <div className="wallet-row">
-                  <span className="wallet-addr">{cryptoOrder.walletAddress}</span>
-                  <button
-                    className="copy-btn"
-                    onClick={() => handleCopy(cryptoOrder.walletAddress)}
-                  >
-                    {copied ? <Check size={13} /> : <Copy size={13} />}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                </div>
+                &lt;div className=&quot;wallet-row&quot;&gt;
+                  &lt;span className=&quot;wallet-addr&quot;&gt;{cryptoOrder.walletAddress}&lt;/span&gt;
+                  &lt;button
+                    className=&quot;copy-btn&quot;
+                    onClick={() =&gt; handleCopy(cryptoOrder.walletAddress)}
+                  &gt;
+                    {copied ? &lt;Check size={13} /&gt; : &lt;Copy size={13} /&gt;}
+                    {copied ? &quot;Copied&quot; : &quot;Copy&quot;}
+                  &lt;/button&gt;
+                &lt;/div&gt;
 
-                <div className="waiting-row">
-                  <span className="pulse-dot" />
+                &lt;div className=&quot;waiting-row&quot;&gt;
+                  &lt;span className=&quot;pulse-dot&quot; /&gt;
                   Waiting for payment — this page updates automatically, no need
                   to refresh.
-                </div>
+                &lt;/div&gt;
 
-                <div className="modal-note">
-                  Network: <strong>USDT-TRC20</strong> only. Sending on any other
+                &lt;div className=&quot;modal-note&quot;&gt;
+                  Network: &lt;strong&gt;USDT-TRC20&lt;/strong&gt; only. Sending on any other
                   network will not be detected.
-                </div>
-              </>
+                &lt;/div&gt;
+              &lt;/&gt;
             )}
 
-            {cryptoStatus === "paid" && (
-              <div className="rzp-box">
-                <Check size={22} style={{ color: "#E3A64B", marginBottom: 8 }} />
-                <p>Payment received — your plan is now active.</p>
-              </div>
+            {cryptoStatus === &quot;paid&quot; &amp;&amp; (
+              &lt;div className=&quot;rzp-box&quot;&gt;
+                &lt;Check size={22} style={{ color: &quot;#E3A64B&quot;, marginBottom: 8 }} /&gt;
+                &lt;p&gt;Payment received — your plan is now active.&lt;/p&gt;
+              &lt;/div&gt;
             )}
 
-            {cryptoStatus === "expired" && (
-              <div className="rzp-box">
-                <p>This payment window expired. Close and reopen to get a fresh amount.</p>
-              </div>
+            {cryptoStatus === &quot;expired&quot; &amp;&amp; (
+              &lt;div className=&quot;rzp-box&quot;&gt;
+                &lt;p&gt;This payment window expired. Close and reopen to get a fresh amount.&lt;/p&gt;
+              &lt;/div&gt;
             )}
-          </>
+          &lt;/&gt;
         ) : (
-          <>
-            <div className="rzp-box">
-              <CreditCard size={22} style={{ color: "#E3A64B", marginBottom: 8 }} />
-              <p>
+          &lt;&gt;
+            &lt;div className=&quot;rzp-box&quot;&gt;
+              &lt;CreditCard size={22} style={{ color: &quot;#E3A64B&quot;, marginBottom: 8 }} /&gt;
+              &lt;p&gt;
                 Pay securely via Razorpay Checkout — cards, UPI, and netbanking.
                 Your plan activates automatically the moment payment clears.
-              </p>
-              <button className="rzp-btn" onClick={payWithRazorpay} disabled={rzpLoading}>
-                {rzpLoading ? "Opening checkout…" : `Pay ${plan.price} now`}
-              </button>
-              {rzpError && <div className="rzp-error">{rzpError}</div>}
-            </div>
-            <div className="modal-demo-tag">
-              <ShieldCheck size={12} /> Requires the CandleVolt backend running with
+              &lt;/p&gt;
+              &lt;button className=&quot;rzp-btn&quot; onClick={payWithRazorpay} disabled={rzpLoading}&gt;
+                {rzpLoading ? &quot;Opening checkout…&quot; : `Pay ${plan.price} now`}
+              &lt;/button&gt;
+              {rzpError &amp;&amp; &lt;div className=&quot;rzp-error&quot;&gt;{rzpError}&lt;/div&gt;}
+            &lt;/div&gt;
+            &lt;div className=&quot;modal-demo-tag&quot;&gt;
+              &lt;ShieldCheck size={12} /&gt; Requires the CandleVolt backend running with
               real Razorpay keys — see backend README.
-            </div>
-          </>
+            &lt;/div&gt;
+          &lt;/&gt;
         )}
-      </div>
-    </div>
+      &lt;/div&gt;
+    &lt;/div&gt;
   );
 }
 
 // ---------------------------------------------------------------------------
+
 export default function CandleVolt() {
-  const [market, setMarket] = useState("crypto");
-  const [view, setView] = useState("dashboard");
+  const [market, setMarket] = useState(&quot;crypto&quot;);
+  const [view, setView] = useState(&quot;dashboard&quot;);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [series, setSeries] = useState(() => {
+  const [series, setSeries] = useState(() =&gt; {
     const all = {};
     Object.values(ASSETS)
       .flat()
-      .forEach((a) => {
+      .forEach((a) =&gt; {
         all[a.symbol] = seedSeries(a.base);
       });
     return all;
   });
   const [signals, setSignals] = useState([]);
   const [selected, setSelected] = useState(ASSETS.crypto[0].symbol);
+  const [dashboardTf, setDashboardTf] = useState(&quot;1m&quot;);
   const [payingPlan, setPayingPlan] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [connected, setConnected] = useState(true);
-
-  // ---- Auth state ----
+                  // ---- Auth state ----
   // Defaults silently to a guest session on load — never a blocking popup.
   // Sign-in is opt-in via the profile button in the header / Account view.
   const [auth, setAuth] = useState(null);
@@ -1327,12 +1429,12 @@ export default function CandleVolt() {
 
   const effectiveUserId = auth?.userId || guestIdRef.current;
 
-  useEffect(() => {
-    (async () => {
+  useEffect(() =&gt; {
+    (async () =&gt; {
       const stored = loadStoredAuth();
       if (!stored) {
         if (!guestIdRef.current) guestIdRef.current = makeSessionId();
-        setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
+        setAuth({ userId: guestIdRef.current, email: null, plan: &quot;Free&quot;, guest: true, profile: {} });
         setAuthChecked(true);
         return;
       }
@@ -1340,7 +1442,7 @@ export default function CandleVolt() {
         const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
           headers: { Authorization: `Bearer ${stored.token}` },
         });
-        if (!res.ok) throw new Error("session invalid");
+        if (!res.ok) throw new Error(&quot;session invalid&quot;);
         const data = await res.json();
         setAuth({
           userId: data.userId,
@@ -1352,146 +1454,150 @@ export default function CandleVolt() {
       } catch {
         clearStoredAuth();
         if (!guestIdRef.current) guestIdRef.current = makeSessionId();
-        setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
+        setAuth({ userId: guestIdRef.current, email: null, plan: &quot;Free&quot;, guest: true, profile: {} });
       } finally {
         setAuthChecked(true);
       }
     })();
   }, []);
 
-  const handleAuthenticated = ({ userId, email, plan, profile }) => {
+  const handleAuthenticated = ({ userId, email, plan, profile }) =&gt; {
     setAuth({ userId, email, plan, profile: profile || {}, guest: false });
     setShowAuthModal(false);
   };
 
-  const handleProfileSaved = (profile) => {
-    setAuth((prev) => (prev ? { ...prev, profile } : prev));
+  const handleProfileSaved = (profile) =&gt; {
+    setAuth((prev) =&gt; (prev ? { ...prev, profile } : prev));
   };
 
-  const handleLogout = () => {
+  const handleLogout = () =&gt; {
     clearStoredAuth();
     guestIdRef.current = makeSessionId();
-    setAuth({ userId: guestIdRef.current, email: null, plan: "Free", guest: true, profile: {} });
-    setView("dashboard");
+    setAuth({ userId: guestIdRef.current, email: null, plan: &quot;Free&quot;, guest: true, profile: {} });
+    setView(&quot;dashboard&quot;);
   };
 
   const allAssets = Object.values(ASSETS).flat();
 
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+  useEffect(() =&gt; {
+    const id = setInterval(() =&gt; setNow(Date.now()), 1000);
+    return () =&gt; clearInterval(id);
   }, []);
+
   // Poll the real backend for prices — falls back to holding the last known
-  // value (and flags "offline") if the backend isn't reachable yet.
-  const pollPrices = useCallback(async () => {
+  // value (and flags &quot;offline&quot;) if the backend isn&#x27;t reachable yet.
+  const pollPrices = useCallback(async () =&gt; {
     try {
       const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
-      if (!res.ok) throw new Error("bad response");
+      if (!res.ok) throw new Error(&quot;bad response&quot;);
       const data = await res.json();
-      if (!data || typeof data !== "object") throw new Error("bad payload");
+      if (!data || typeof data !== &quot;object&quot;) throw new Error(&quot;bad payload&quot;);
       setConnected(true);
-      setSeries((prev) => {
+      setSeries((prev) =&gt; {
         const next = { ...prev };
-        Object.values(data).forEach((list) => {
+        Object.values(data).forEach((list) =&gt; {
           if (!Array.isArray(list)) return;
-          list.forEach((entry) => {
+          list.forEach((entry) =&gt; {
             const symbol = entry?.symbol;
             const price = entry?.price;
             if (!symbol || price == null || Number.isNaN(price)) return;
             const arr = [...(next[symbol] || seedSeries(price))];
             arr.push(price);
-            if (arr.length > HISTORY_LEN) arr.shift();
+            if (arr.length &gt; HISTORY_LEN) arr.shift();
             next[symbol] = arr;
           });
         });
         return next;
       });
     } catch (e) {
-      console.warn("[CandleVolt] price poll failed:", e?.message);
+      console.warn(&quot;[CandleVolt] price poll failed:&quot;, e?.message);
       setConnected(false);
     }
   }, []);
 
   // Poll real signals for the active market — free-plan delay is enforced
   // server-side, so whatever we get back here is already correctly gated.
-  const pollSignals = useCallback(async () => {
+  const pollSignals = useCallback(async () =&gt; {
     if (!effectiveUserId) return;
     try {
       const res = await fetchWithTimeout(
-        `${BACKEND_URL}/api/signals?market=${market}&userId=${effectiveUserId}`
+        `${BACKEND_URL}/api/signals?market=${market}&amp;userId=${effectiveUserId}`
       );
-      if (!res.ok) throw new Error("bad response");
+      if (!res.ok) throw new Error(&quot;bad response&quot;);
       const data = await res.json();
       setSignals(Array.isArray(data?.signals) ? data.signals : []);
     } catch (e) {
-      console.warn("[CandleVolt] signal poll failed:", e?.message);
+      console.warn(&quot;[CandleVolt] signal poll failed:&quot;, e?.message);
       // keep whatever signals we already have rather than clearing them
     }
   }, [market, effectiveUserId]);
 
-  useEffect(() => {
+  useEffect(() =&gt; {
     pollPrices();
     pollSignals();
     const priceId = setInterval(pollPrices, POLL_MS);
     const sigId = setInterval(pollSignals, POLL_MS);
-    return () => {
+    return () =&gt; {
       clearInterval(priceId);
       clearInterval(sigId);
     };
   }, [pollPrices, pollSignals]);
 
-  const tickerData = allAssets.map((a) => {
+  const tickerData = allAssets.map((a) =&gt; {
     const arr = series[a.symbol];
     const price = arr[arr.length - 1];
     const prev = arr[Math.max(0, arr.length - 6)];
     const pct = prev ? ((price - prev) / prev) * 100 : 0;
-    return { symbol: a.symbol, price, up: price >= prev, pct };
+    return { symbol: a.symbol, price, up: price &gt;= prev, pct };
   });
 
   const visibleAssets = ASSETS[market];
-  const currentPlan = auth?.plan || "Free";
-  const isFree = currentPlan === "Free";
+  const currentPlan = auth?.plan || &quot;Free&quot;;
+  const isFree = currentPlan === &quot;Free&quot;;
 
   const plans = [
     {
-      name: "Free",
-      price: "₹0",
-      period: "/mo",
-      features: ["3 signals / day", "2–3 min delayed", "Crypto only"],
+      name: &quot;Free&quot;,
+      price: &quot;₹0&quot;,
+      period: &quot;/mo&quot;,
+      features: [&quot;3 signals / day&quot;, &quot;2–3 min delayed&quot;, &quot;Crypto only&quot;],
     },
     {
-      name: "Pro",
-      price: "₹999",
-      period: "/mo",
+      name: &quot;Pro&quot;,
+      price: &quot;₹999&quot;,
+      period: &quot;/mo&quot;,
       features: [
-        "Unlimited signals",
-        "Real-time delivery",
-        "Crypto + Forex + Commodities",
-        "Entry / Target / Stop",
+        &quot;Unlimited signals&quot;,
+        &quot;Real-time delivery&quot;,
+        &quot;Crypto + Forex + Commodities&quot;,
+        &quot;Entry / Target / Stop&quot;,
       ],
       highlight: true,
     },
     {
-      name: "Elite",
-      price: "₹2,499",
-      period: "/mo",
+      name: &quot;Elite&quot;,
+      price: &quot;₹2,499&quot;,
+      period: &quot;/mo&quot;,
       features: [
-        "Everything in Pro",
-        "Memecoin signals",
-        "Confidence scoring",
-        "Priority signal queue",
+        &quot;Everything in Pro&quot;,
+        &quot;Memecoin signals&quot;,
+        &quot;Confidence scoring&quot;,
+        &quot;Priority signal queue&quot;,
       ],
     },
   ];
-  return (
-    <div className="app-root">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
-        * { box-sizing: border-box; }
+  return (
+    &lt;div className=&quot;app-root&quot;&gt;
+      &lt;style&gt;{`
+        @import url(&#x27;https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600&amp;display=swap&#x27;);
+                  * { box-sizing: border-box; }
+        html, body { margin: 0; overflow-x: hidden; max-width: 100%; }
         .app-root {
           background: radial-gradient(ellipse 1200px 600px at 50% -10%, #161B26 0%, #0A0D12 55%);
           min-height: 100vh;
+          width: 100%;
+          overflow-x: hidden;
           color: #EDEFF3;
           font-family: 'Inter', sans-serif;
           padding-bottom: 48px;
@@ -1577,7 +1683,7 @@ export default function CandleVolt() {
           transform: translateX(-100%); transition: transform .22s ease;
           z-index: 61; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px;
         }
-        .side-menu-open { transform: translateX(0); }
+                  .side-menu-open { transform: translateX(0); }
         .side-menu-head {
           display: flex; align-items: center; gap: 10px;
           font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px;
@@ -1591,8 +1697,7 @@ export default function CandleVolt() {
           cursor: pointer; text-align: left;
         }
         .side-menu-item:hover { background: #171D2A; }
-        .side-menu-item.active { background: linear-gradient(135deg, #1E2740, #171D2A); color:
-        #E3A64B; font-weight: 600; box-shadow: inset 0 1px 0 rgba(227,166,75,0.1); }
+        .side-menu-item.active { background: linear-gradient(135deg, #1E2740, #171D2A); color: #E3A64B; font-weight: 600; box-shadow: inset 0 1px 0 rgba(227,166,75,0.1); }
         .coming-soon { text-align: center; padding: 26px 14px; }
         .coming-soon p { font-size: 12.5px; color: #9AA3B5; line-height: 1.7; max-width: 380px; margin: 0 auto; }
         .analysis-updated { font-size: 10.5px; color: #5C6478; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; }
@@ -1653,7 +1758,7 @@ export default function CandleVolt() {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.35; }
         }
-                .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+                  .container { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
 
         .offline-banner {
           display: flex; align-items: center; gap: 8px;
@@ -1737,8 +1842,18 @@ export default function CandleVolt() {
         .chart-hero-price {
           font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #E3A64B;
         }
-        .candle-chart-box { width: 100%; border-radius: 6px; overflow: hidden; }
+        .candle-chart-box { width: 100%; max-width: 100%; border-radius: 6px; overflow: hidden; }
+        .tf-bar { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+        .tf-btn {
+          font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500;
+          padding: 5px 10px; border-radius: 6px; border: 1px solid #232A3B;
+          background: #0D1017; color: #9AA3B5; cursor: pointer;
+        }
+        .tf-btn.active { color: #E3A64B; border-color: #3A2E1C; background: #171307; }
+        .chart-symbol-picker { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+        .chart-page-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
         .chart-note { font-size: 10.5px; color: #5C6478; margin-top: 8px; line-height: 1.5; }
+
         .sig-feed { display: flex; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; }
         .sig-card {
           border-radius: 10px;
@@ -1785,7 +1900,7 @@ export default function CandleVolt() {
           background: #0D1017; border: 1px solid #1B2130;
           text-decoration: none; color: inherit;
         }
-        .news-item:hover { border-color: #232A3B; }
+                  .news-item:hover { border-color: #232A3B; }
         .news-title { font-size: 12.5px; color: #EDEFF3; line-height: 1.5; margin-bottom: 6px; }
         .news-meta { display: flex; justify-content: space-between; font-size: 10.5px; }
         .news-source { color: #E3A64B; font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
@@ -1800,7 +1915,7 @@ export default function CandleVolt() {
         .stat-box {
           flex: 1; background: #0D1017; border: 1px solid #1B2130; border-radius: 10px; padding: 12px;
         }
-                .stat-label { font-size: 10.5px; color: #5C6478; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+        .stat-label { font-size: 10.5px; color: #5C6478; margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
         .stat-val { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: #EDEFF3; }
         .stat-val.gold { color: #E3A64B; }
 
@@ -1898,7 +2013,8 @@ export default function CandleVolt() {
         .waiting-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #9AA3B5; margin-bottom: 10px; }
         .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #E3A64B; animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0; }
       `}</style>
-          <Ticker tickerData={tickerData} />
+
+      <Ticker tickerData={tickerData} />
 
       <div className="header">
         <div className="brand">
@@ -1935,8 +2051,7 @@ export default function CandleVolt() {
           )}
         </div>
       </div>
-
-      <div className="container">
+                  <div className="container">
         {!connected && (
           <div className="offline-banner">
             <WifiOff size={14} />
@@ -1988,6 +2103,7 @@ export default function CandleVolt() {
                 </div>
               );
             })}
+
             <div className="chart-hero">
               <div className="chart-hero-head">
                 <span className="chart-hero-sym">{selected}</span>
@@ -1999,7 +2115,10 @@ export default function CandleVolt() {
                 </span>
               </div>
               {market === "crypto" || market === "meme" ? (
-                <CandlestickChart symbol={selected} />
+                <>
+                  <TimeframeBar value={dashboardTf} onChange={setDashboardTf} />
+                  <CandlestickChart symbol={selected} interval={dashboardTf} />
+                </>
               ) : (
                 <ResponsiveContainer width="100%" height={140}>
                   <LineChart data={(series[selected] || []).map((v, i) => ({ i, v }))}>
@@ -2051,7 +2170,7 @@ export default function CandleVolt() {
         </div>
           </>
         )}
-
+{view === "chart" && <ChartView />}
         {view === "news" && <NewsView />}
         {view === "calendar" && <CalendarView />}
         {view === "analysis" && <AnalysisView />}
@@ -2067,6 +2186,7 @@ export default function CandleVolt() {
           />
         )}
       </div>
+
       {payingPlan && (
         <PaymentModal
           plan={payingPlan}
