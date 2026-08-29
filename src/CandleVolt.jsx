@@ -2041,7 +2041,7 @@ export default function CandleVolt() {
                   )}
                 </span>
               </div>
-              {market === "crypto" || market === "meme" ? (
+              {true ? (
                 <>
                   <TimeframeBar value={dashboardTf} onChange={setDashboardTf} />
                   <CandlestickChart symbol={selected} interval={dashboardTf} />
