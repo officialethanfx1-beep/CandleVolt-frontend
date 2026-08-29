@@ -2061,12 +2061,7 @@ export default function CandleVolt() {
                   </LineChart>
                 </ResponsiveContainer>
               )}
-              {market !== "crypto" && market !== "meme" && (
-                <div className="chart-note">
-                  Line chart — full candlesticks need a paid forex/commodities
-                  data plan (free tier only gives the latest price, not OHLC).
-                </div>
-              )}
+              
             </div>
           </div>
 
